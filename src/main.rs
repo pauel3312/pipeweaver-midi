@@ -1,16 +1,16 @@
-use std::{env, fs};
-use interprocess::local_socket::{GenericFilePath, ToFsName};
-use pipeweaver_ipc::client::Client;
-use pipeweaver_ipc::clients::ipc::ipc_socket::Socket;
-use pipeweaver_ipc::commands::{APICommand, DaemonRequest, DaemonResponse};
-use interprocess::local_socket::tokio::prelude::LocalSocketStream;
+mod midi_prototypes;
+
+use pipeweaver_ipc::commands::{APICommand, DaemonRequest, DaemonStatus};
 use directories::BaseDirs;
 use anyhow::{Error, Result};
 use std::path::PathBuf;
-use std::time::Duration;
-use interprocess::local_socket::traits::tokio::Stream;
-use pipeweaver_ipc::clients::ipc::ipc_client::IPCClient;
+use std::{env, fs};
+use std::sync::Arc;
+use pipeweaver_ipc::clients::web::web_client::WebClient;
 use pipeweaver_shared::Mix;
+use tokio::sync::Mutex;
+use tokio::time::Duration;
+
 
 const APP_NAME: &str = "PipeWeaver";
 const APP_NAME_ID: &str = "pipeweaver";
@@ -35,24 +35,31 @@ pub fn get_socket_path() -> Result<PathBuf> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("Hello, world!");
-    let path = get_socket_path()?;
-    println!("Using IPC Path: {:?}", path);
 
-    let connection = LocalSocketStream::connect(path.to_fs_name::<GenericFilePath>()?).await?;
-    let socket: Socket<DaemonResponse, DaemonRequest> = Socket::new(connection);
-    let mut client = IPCClient::new(socket);
-    let status = client.get_status().await?;
+    let _ = midi_prototypes::main().await;
+    Ok(())
+
+/*
+    let mut client = WebClient::new(String::from("http://localhost:14565/api/command"));
+    println!("{:?}", client.get_status().await?);
+
+    let client: Arc<Mutex<WebClient>> = Arc::new(Mutex::new(client));
+    let status: Arc<Mutex<DaemonStatus>> = Arc::new(Mutex::new(client.lock().await.get_status().await?));
     let mut i = 0u8;
     let mut up = true;
 
     loop{
-        tokio::time::sleep(Duration::from_millis(10)).await;
-        client.send(
-            &DaemonRequest::Pipewire(
-                APICommand::SetSourceVolume(status.audio.profile.devices.sources.physical_devices[0].description.id,Mix::B, i)
-            )
-        ).await?;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let status_clone = Arc::clone(&status);
+        let client_clone = Arc::clone(&client);
+        tokio::spawn(async move {
+            let _ = client_clone.lock().await.send(
+                &DaemonRequest::Pipewire(
+                    APICommand::SetSourceVolume(status_clone.lock().await.audio.profile.devices.sources.physical_devices[0].description.id, Mix::B, i)
+                )
+            ).await;
+        });
         if up {
             if i < 100{
                 i += 1;
@@ -67,5 +74,5 @@ async fn main() -> Result<()> {
         }
         up = true;
     }
-
+ */
 }
