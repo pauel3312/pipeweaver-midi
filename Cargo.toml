@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 pipeweaver-ipc = { git = "https://github.com/pipeweaver/pipeweaver", tag = "v0.1.6" }
 pipeweaver-shared = { git = "https://github.com/pipeweaver/pipeweaver", tag = "v0.1.6" }
-tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros"] }
+tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros", "signal"] }
 anyhow = "1.0.102"
 directories = "6.0.0"
 midir = "0.11.0"

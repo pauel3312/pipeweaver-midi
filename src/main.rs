@@ -1,4 +1,5 @@
 mod midi_prototypes;
+mod midi_pattern;
 
 use pipeweaver_ipc::commands::{APICommand, DaemonRequest, DaemonStatus};
 use directories::BaseDirs;
