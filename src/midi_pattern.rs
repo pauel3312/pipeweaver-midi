@@ -3,6 +3,7 @@ use midi_msg::MidiMsg::ChannelVoice;
 use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
+use std::sync::{Arc, Mutex};
 
 #[derive(Hash, Eq, PartialEq, Debug, Clone, Copy)]
 pub enum ChannelVoiceKind {
@@ -132,8 +133,8 @@ impl From<&Channel> for HashChannel {
     }
 }
 
-pub type Callback = fn(u8);
-#[derive(Debug, Clone, PartialEq)]
+pub type Callback = Arc<Mutex<dyn FnMut(u8) + Send>>;
+#[derive(Clone)]
 pub struct MidiMsgCallbackTree {
     channels: HashMap<HashChannel, ChannelVoiceMsgCallbackTree>,
 }
@@ -207,7 +208,7 @@ impl MidiMsgCallbackTree {
                 match self.channels.get(&hash_channel) {
                     Some(next) => match next.get_if_exists(cvk, place) {
                         Some(cb) => {
-                            cb(cvk.get_val(msg.clone())?);
+                            cb.lock().unwrap()(cvk.get_val(msg.clone())?);
                             Ok(true)
                         }
                         None => Ok(false),
@@ -220,7 +221,7 @@ impl MidiMsgCallbackTree {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub struct ChannelVoiceMsgCallbackTree {
     types: HashMap<ChannelVoiceKind, CallbackTreeLeaves>,
 }
@@ -264,7 +265,7 @@ impl ChannelVoiceMsgCallbackTree {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub struct CallbackTreeLeaves {
     callbacks: HashMap<u8, Callback>,
 }
@@ -288,14 +289,4 @@ impl CallbackTreeLeaves {
     pub fn remove_callback(&mut self, place: u8) {
         self.callbacks.remove(&place);
     }
-}
-
-pub struct ControlChangeMatcher {
-    pub channel: Option<Channel>,
-    pub control: Option<u8>,
-}
-
-pub struct NoteChangeMatcher {
-    pub channel: Option<Channel>,
-    pub note: Option<u8>,
 }
