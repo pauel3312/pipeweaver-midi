@@ -6,6 +6,7 @@ use std::error::Error;
 use std::io::ErrorKind;
 use std::sync::{Arc, Mutex};
 use tokio::signal;
+use crate::pwv_controllers::PrinterController;
 
 #[allow(unused)] // This is a testing function
 fn print_midi_callback(timestamp_micros: u64, data: &[u8], _t: &mut ()) {
@@ -23,7 +24,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting MIDI...");
     let midi = MidiInput::new("midi-discover")?;
     let ports = midi.ports();
-    let callback: Callback = Arc::new(Mutex::new(|c: u8| println!("{}", c)));
+    let callback: Callback = Arc::new(Mutex::new(PrinterController{name:"TEST".to_string()}));
 
     let mut connections: Vec<MidiInputConnection<()>> = Vec::new();
 

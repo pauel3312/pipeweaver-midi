@@ -1,3 +1,4 @@
+use crate::pwv_controllers::CallbackProvider;
 use midi_msg::ChannelVoiceMsg::{ControlChange, NoteOff, NoteOn};
 use midi_msg::MidiMsg::ChannelVoice;
 use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
@@ -133,7 +134,7 @@ impl From<&Channel> for HashChannel {
     }
 }
 
-pub type Callback = Arc<Mutex<dyn FnMut(u8) + Send>>;
+pub type Callback = Arc<Mutex<dyn CallbackProvider + Send>>;
 #[derive(Clone)]
 pub struct MidiMsgCallbackTree {
     channels: HashMap<HashChannel, ChannelVoiceMsgCallbackTree>,
@@ -208,7 +209,7 @@ impl MidiMsgCallbackTree {
                 match self.channels.get(&hash_channel) {
                     Some(next) => match next.get_if_exists(cvk, place) {
                         Some(cb) => {
-                            cb.lock().unwrap()(cvk.get_val(msg.clone())?);
+                            cb.lock().unwrap().callback(cvk.get_val(msg.clone())?);
                             Ok(true)
                         }
                         None => Ok(false),

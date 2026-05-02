@@ -1,5 +1,5 @@
 
-pub trait BooleanProvider {
+pub trait BooleanBehaviour {
     fn get(&mut self, data: u8) -> bool;
     fn set(&mut self, data: bool);
 }
@@ -16,7 +16,7 @@ pub enum PushBtn {
     Threshold { threshold: u8, invert: bool },
 }
 
-impl BooleanProvider for ToggleBtn {
+impl BooleanBehaviour for ToggleBtn {
     fn get(&mut self, data: u8) -> bool {
         let mut check = data > self.threshold;
         if self.falling_edge {
@@ -48,7 +48,7 @@ impl ToggleBtn {
         }
     }
 }
-impl BooleanProvider for PushBtn {
+impl BooleanBehaviour for PushBtn {
     fn get(&mut self, data: u8) -> bool {
         match *self {
             PushBtn::Val { v_up, v_down } => {
@@ -72,7 +72,7 @@ impl BooleanProvider for PushBtn {
     fn set(&mut self, _: bool) {}
 }
 
-pub trait AxisProvider {
+pub trait AxisBehaviour {
     fn get(&mut self, data: u8) -> u8;
     fn set(&mut self, data: u8);
 }
@@ -91,7 +91,7 @@ pub struct RelativeAxis {
     step: u8,
 }
 
-impl AxisProvider for AbsoluteAxis {
+impl AxisBehaviour for AbsoluteAxis {
     fn get(&mut self, data: u8) -> u8 {
         ((data - self.min_in) as f32 / (self.max_in - self.min_in) as f32
             * (self.max_out - self.min_out) as f32) as u8
@@ -111,7 +111,7 @@ impl AbsoluteAxis {
     }
 }
 
-impl AxisProvider for RelativeAxis {
+impl AxisBehaviour for RelativeAxis {
     fn get(&mut self, data: u8) -> u8 {
         let mut check = data > self.threshold;
         if self.invert {

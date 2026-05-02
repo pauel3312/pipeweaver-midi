@@ -9,7 +9,11 @@ pipeweaver-shared = { git = "https://github.com/pipeweaver/pipeweaver", tag = "v
 pipeweaver-websocket-client = { git = "https://github.com/pipeweaver/pipeweaver-websocket-client", branch = "main" }
 tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros", "signal"] }
 anyhow = "1.0.102"
-directories = "6.0.0"
 midir = "0.11.0"
 midi-msg = "0.8.2"
 ulid = "1.2.1"
+egui = "0.34.1"
+eframe = "0.34.1"
+winit = "0.30.13"
+env_logger = "0.11.10"
+log = "0.4.29"
