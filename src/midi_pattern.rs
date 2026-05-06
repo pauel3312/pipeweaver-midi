@@ -3,6 +3,7 @@ use midi_msg::ChannelVoiceMsg::{ControlChange, NoteOff, NoteOn};
 use midi_msg::MidiMsg::ChannelVoice;
 use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
 use std::collections::HashMap;
+use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
 use std::sync::{Arc, Mutex};
 
@@ -135,7 +136,7 @@ impl From<&Channel> for HashChannel {
 }
 
 pub type Callback = Arc<Mutex<dyn CallbackProvider + Send>>;
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MidiMsgCallbackTree {
     channels: HashMap<HashChannel, ChannelVoiceMsgCallbackTree>,
 }
@@ -222,7 +223,7 @@ impl MidiMsgCallbackTree {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ChannelVoiceMsgCallbackTree {
     types: HashMap<ChannelVoiceKind, CallbackTreeLeaves>,
 }
@@ -266,7 +267,7 @@ impl ChannelVoiceMsgCallbackTree {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CallbackTreeLeaves {
     callbacks: HashMap<u8, Callback>,
 }

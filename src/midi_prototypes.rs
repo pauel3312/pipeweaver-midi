@@ -8,18 +8,6 @@ use std::sync::{Arc, Mutex};
 use tokio::signal;
 use crate::pwv_controllers::PrinterController;
 
-#[allow(unused)] // This is a testing function
-fn print_midi_callback(timestamp_micros: u64, data: &[u8], _t: &mut ()) {
-    println!(
-        "{}: {:?}",
-        timestamp_micros,
-        MidiMsg::from_midi(data).unwrap().0
-    );
-}
-pub(crate) async fn main_wrap() {
-    main().await.unwrap();
-}
-
 async fn main() -> Result<(), Box<dyn Error>> {
     println!("Starting MIDI...");
     let midi = MidiInput::new("midi-discover")?;

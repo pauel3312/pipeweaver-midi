@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use crate::behaviours::{AxisBehaviour, BooleanBehaviour};
 use pipeweaver_ipc::commands::{APICommand, DaemonRequest, DaemonStatus};
 use pipeweaver_shared::{Mix, MuteState, MuteTarget};
@@ -13,9 +14,11 @@ pub trait BooleanProvider: CallbackProvider {
     fn set(&self, data: bool);
 }
 
-pub trait CallbackProvider {
+pub trait CallbackProvider: Debug {
     fn callback(&self, data: u8);
 }
+
+#[derive(Debug)]
 pub struct ControllerCore<B: ?Sized> {
     behaviour: Arc<Mutex<B>>,
     tx: Arc<Mutex<Sender<DaemonRequest>>>,
@@ -57,6 +60,15 @@ where
             core: ControllerCore::new(behaviour, tx),
             drq_map,
         }
+    }
+}
+
+impl<F> Debug for AxisController<F>
+where
+    F: 'static + Fn(u8) -> DaemonRequest + Send + Sync,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("AxisController")
     }
 }
 
@@ -104,6 +116,15 @@ where
     }
 }
 
+impl<F> Debug for BooleanController<F>
+where
+    F: 'static + Fn(bool) -> DaemonRequest + Send + Sync,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str("BooleanController")
+    }
+}
+
 impl<F> CallbackProvider for BooleanController<F>
 where
     F: Fn(bool) -> DaemonRequest + Send + Sync + 'static,
@@ -124,12 +145,14 @@ where
     }
 }
 
-
+// #[derive(Clone, PartialEq, Copy, Debug)]
+#[derive(Eq, Clone, Hash, PartialEq, Copy, Debug)]
 pub enum AxisCommand {
     SourceVolume{id: Ulid, mix: Mix},
     TargetVolume{id: Ulid},
 }
 
+#[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
 pub enum BoolCommand {
     Route { in_id: Ulid, out_id: Ulid },
     SourceMute { id: Ulid, target: MuteTarget },
@@ -280,7 +303,7 @@ pub fn axis_controller(
     command: AxisCommand,
     behaviour: Arc<Mutex<dyn AxisBehaviour + Send + Sync>>,
     tx: Arc<Mutex<Sender<DaemonRequest>>>
-) -> impl AxisProvider + Send + Sync {
+) -> impl AxisProvider + CallbackProvider + Send + Sync {
     AxisController::new(behaviour, tx, move |data: u8| {command.to_request(data)})
 }
 
@@ -288,11 +311,12 @@ pub fn bool_controller(
     command: BoolCommand,
     behaviour: Arc<Mutex<dyn BooleanBehaviour + Send + Sync>>,
     tx: Arc<Mutex<Sender<DaemonRequest>>>
-) -> impl BooleanProvider + Send + Sync {
+) -> impl BooleanProvider + CallbackProvider + Send + Sync {
     BooleanController::new(behaviour, tx, move |data: bool| {command.to_request(data)})
 }
 
 
+#[derive(Debug)]
 pub struct PrinterController {
     pub name: String
 }

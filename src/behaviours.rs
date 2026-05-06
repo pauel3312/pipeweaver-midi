@@ -1,4 +1,3 @@
-
 pub trait BooleanBehaviour {
     fn get(&mut self, data: u8) -> bool;
     fn set(&mut self, data: bool);
@@ -11,9 +10,9 @@ pub struct ToggleBtn {
     falling_edge: bool,
 }
 
-pub enum PushBtn {
-    Val { v_up: u8, v_down: u8 },
-    Threshold { threshold: u8, invert: bool },
+pub struct PushBtn {
+    threshold: u8,
+    invert: bool,
 }
 
 impl BooleanBehaviour for ToggleBtn {
@@ -50,23 +49,10 @@ impl ToggleBtn {
 }
 impl BooleanBehaviour for PushBtn {
     fn get(&mut self, data: u8) -> bool {
-        match *self {
-            PushBtn::Val { v_up, v_down } => {
-                if data == v_up {
-                    true
-                } else if data == v_down {
-                    false
-                } else {
-                    false
-                }
-            }
-            PushBtn::Threshold { threshold, invert } => {
-                if invert {
-                    data < threshold
-                } else {
-                    data > threshold
-                }
-            }
+        if self.invert {
+            data <= self.threshold
+        } else {
+            data >= self.threshold
         }
     }
     fn set(&mut self, _: bool) {}
@@ -84,11 +70,27 @@ pub struct AbsoluteAxis {
     max_out: u8,
 }
 
-pub struct RelativeAxis {
+pub struct CustomRelativeAxis {
     curr_val: u8,
     threshold: u8,
     invert: bool,
     step: u8,
+}
+
+
+pub struct TwosComplimentRelativeAxis {
+    curr_val: u8,
+    invert: bool,
+}
+
+pub struct SignMagnitudeRelativeAxis {
+    curr_val: u8,
+    invert: bool,
+}
+
+pub struct BinaryOffsetRelativeAxis {
+    curr_val: u8,
+    invert: bool,
 }
 
 impl AxisBehaviour for AbsoluteAxis {
@@ -106,12 +108,12 @@ impl AbsoluteAxis {
             min_in,
             max_in,
             min_out,
-            max_out
+            max_out,
         }
     }
 }
 
-impl AxisBehaviour for RelativeAxis {
+impl AxisBehaviour for CustomRelativeAxis {
     fn get(&mut self, data: u8) -> u8 {
         let mut check = data > self.threshold;
         if self.invert {
@@ -129,9 +131,9 @@ impl AxisBehaviour for RelativeAxis {
     }
 }
 
-impl RelativeAxis {
-    pub fn new(threshold: u8, invert: Option<bool>, step: Option<u8>) -> RelativeAxis {
-        RelativeAxis {
+impl CustomRelativeAxis {
+    pub fn new(threshold: u8, invert: Option<bool>, step: Option<u8>) -> CustomRelativeAxis {
+        Self {
             curr_val: 0,
             threshold,
             invert: invert.unwrap_or(false),
@@ -139,3 +141,79 @@ impl RelativeAxis {
         }
     }
 }
+
+
+impl AxisBehaviour for TwosComplimentRelativeAxis {
+    fn get(&mut self, data: u8) -> u8 {
+        let mut offset;
+        if data & 0b0100_0000 != 0 {
+            offset = -(((data & 0b0111_1111) + 1) as i8) // 2's compliment negate 7 bit to get a valid u8, then negate it to get the proper negation.
+        } else {
+            offset = data as i8;
+        }
+        if self.invert {
+            offset = -offset;
+        }
+        self.curr_val = self.curr_val.saturating_add_signed(offset);
+        self.curr_val
+    }
+
+    fn set(&mut self, data: u8) {
+        self.curr_val = data;
+    }
+}
+
+impl TwosComplimentRelativeAxis {
+    pub fn new(invert: Option<bool>) -> TwosComplimentRelativeAxis {
+        Self {
+            curr_val: 0,
+            invert: invert.unwrap_or(false),
+        }
+    }
+}
+
+impl AxisBehaviour for SignMagnitudeRelativeAxis {
+    fn get(&mut self, data: u8) -> u8 {
+        let mut offset;
+        if data & 0b0100_0000 != 0 {
+            let data = data & 0b0011_1111;
+            offset = data as i8;
+        } else {
+            offset = data as i8;
+        };
+        if self.invert {
+            offset = -offset;
+        }
+        self.curr_val = self.curr_val.saturating_add_signed(offset);
+        self.curr_val
+    }
+
+    fn set(&mut self, data: u8) {
+        self.curr_val = data;
+    }
+}
+
+impl SignMagnitudeRelativeAxis {
+    pub fn new(invert: Option<bool>) -> SignMagnitudeRelativeAxis {
+        Self {
+            curr_val: 0,
+            invert: invert.unwrap_or(false),
+        }
+    }
+}
+
+impl AxisBehaviour for BinaryOffsetRelativeAxis {
+    fn get(&mut self, data: u8) -> u8 {
+        let mut offset = data as i16 as i8;
+        if self.invert {
+            offset = -offset;
+        }
+        self.curr_val = self.curr_val.saturating_add_signed(offset);
+        self.curr_val
+    }
+
+    fn set(&mut self, data: u8) {
+        self.curr_val = data;
+    }
+}
+
