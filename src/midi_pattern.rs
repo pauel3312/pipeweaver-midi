@@ -292,3 +292,16 @@ impl CallbackTreeLeaves {
         self.callbacks.remove(&place);
     }
 }
+
+pub fn is_event_valid(event: MidiMsg) -> bool {
+    match event {
+        ChannelVoice { channel: _, msg } => {
+            match msg {
+                NoteOn { .. } | NoteOff { .. } | ControlChange { .. } => true,
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+

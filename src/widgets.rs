@@ -1,6 +1,6 @@
 use crate::pwv_controllers::{AxisCommand, BoolCommand};
 use eframe::emath::Align;
-use egui::{Color32, CornerRadius, Frame, Label, Response, Stroke, Ui, Widget};
+use egui::{Color32, CornerRadius, DragValue, Frame, Label, Response, Stroke, Ui, Widget};
 use pipeweaver_shared::{Mix, MuteTarget};
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
@@ -75,7 +75,7 @@ impl<'a> Widget for MuteWidget<'a> {
             };
 
             ui.horizontal(|ui| {
-                ui.add(egui::DragValue::new(threshold).range(0..=127));
+                ui.add(DragValue::new(threshold).range(0..=127));
                 ui.label("threshold");
             });
 
@@ -186,8 +186,7 @@ impl<'a> Widget for VolumeWidget<'a> {
                 AxisBehaviourState::CustomRelative { threshold, invert } => {
                     ui.horizontal(|ui| {
                         ui.add(
-                            egui::DragValue::new(&mut *threshold)
-                                .range(RangeInclusive::new(0u8, 127u8)),
+                            DragValue::new(&mut *threshold).range(RangeInclusive::new(0u8, 127u8)),
                         );
                         ui.label("threshold");
                     });
@@ -202,10 +201,7 @@ impl<'a> Widget for VolumeWidget<'a> {
                         ui.label("minimum input");
                     });
                     ui.horizontal(|ui| {
-                        ui.add(
-                            egui::DragValue::new(&mut *max_in)
-                                .range(RangeInclusive::new(0u8, 127u8)),
-                        );
+                        ui.add(DragValue::new(&mut *max_in).range(RangeInclusive::new(0u8, 127u8)));
                         ui.label("maximum input");
                     });
                 }
@@ -243,8 +239,8 @@ impl<'a> Widget for SourceDeviceWidget<'a> {
         let vol_a_cmd = AxisCommand::SourceVolume { id, mix: Mix::A };
         let vol_b_cmd = AxisCommand::SourceVolume { id, mix: Mix::B };
         Frame::default()
-            .inner_margin(2)
-            .outer_margin(4)
+            .inner_margin(4)
+            .outer_margin(5)
             .stroke(Stroke::new(3.0, Color32::DARK_GRAY))
             .corner_radius(CornerRadius::same(10))
             .show(ui, |ui| {
@@ -306,8 +302,8 @@ impl<'a> Widget for TargetDeviceWidget<'a> {
         let mute_cmd = BoolCommand::TargetMute { id };
         let vol_cmd = AxisCommand::TargetVolume { id };
         Frame::default()
-            .inner_margin(2)
-            .outer_margin(4)
+            .inner_margin(4)
+            .outer_margin(5)
             .stroke(Stroke::new(3.0, Color32::DARK_GRAY))
             .corner_radius(CornerRadius::same(10))
             .show(ui, |ui| {

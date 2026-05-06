@@ -1,9 +1,14 @@
-use crate::widgets::{AxisBehaviourState, BoolBehaviourState, SourceDeviceWidget, TargetDeviceWidget};
+use crate::midi_pattern::is_event_valid;
 use crate::pipeweaver_main::SharedState;
 use crate::pwv_controllers::{AxisCommand, BoolCommand};
-use eframe::{EframePumpStatus, UserEvent, egui};
-use egui::Button;
-use midi_msg::MidiMsg;
+use crate::widgets::{
+    AxisBehaviourState, BoolBehaviourState, SourceDeviceWidget, TargetDeviceWidget,
+};
+use eframe::epaint::{Color32, CornerRadius, Stroke};
+use eframe::{EframePumpStatus, UserEvent};
+use egui::{Button, CentralPanel, ComboBox, DragValue, Frame};
+use midi_msg::ControlChange::CC;
+use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
 use midir::{MidiInput, MidiInputConnection};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -89,15 +94,10 @@ impl PwvMidiGUI {
                 name.as_str(),
                 move |_tm, data, _t| {
                     let msg = MidiMsg::from_midi(data).unwrap().0;
-                    match state_handle.lock().unwrap().midi_tree.exec(&msg) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            if e.kind() == io::ErrorKind::InvalidData {
-                                eprintln!("{}", e)
-                            }
-                        }
+                    if is_event_valid(msg.clone()) {
+                        state_handle.lock().unwrap().midi_tree.exec(&msg).unwrap();
+                        state_handle.lock().unwrap().last_midi_event = Some(msg);
                     }
-                    state_handle.lock().unwrap().last_midi_event = Some(msg);
                 },
                 (),
             )
@@ -116,56 +116,177 @@ impl PwvMidiGUI {
 
 impl eframe::App for PwvMidiGUI {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        CentralPanel::default().show_inside(ui, |ui| {
             let mut conn_ok = true;
             let (before_port, after_port) = {
                 let mut state = self.state.lock().unwrap();
-                ui.horizontal(|ui| {
-                    let before_port = state.current_port.clone();
-                    let mut text = String::from("Port no longer valid!");
-                    match self.midi_dsc.port_name(&state.current_port) {
-                        Ok(txt) => {
-                            text = txt;
-                        }
-                        Err(_) => {
-                            conn_ok = false;
-                        }
+                let before_port = state.current_port.clone();
+                let mut text = String::from("Port no longer valid!");
+                match self.midi_dsc.port_name(&state.current_port) {
+                    Ok(txt) => {
+                        text = txt;
                     }
-                    egui::ComboBox::from_label("MIDI Device")
-                        .selected_text(text)
-                        .show_ui(ui, |ui| {
-                            let ports = self.midi_dsc.ports();
-                            let current_port = &mut state.current_port;
+                    Err(_) => {
+                        conn_ok = false;
+                    }
+                }
+                // TODO Learn/custom CC selector.
+                Frame::default()
+                    .inner_margin(4)
+                    .outer_margin(5)
+                    .stroke(Stroke::new(3.0, Color32::DARK_GRAY))
+                    .corner_radius(CornerRadius::same(10))
+                    .show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            ComboBox::from_label("MIDI Device")
+                                .selected_text(text)
+                                .show_ui(ui, |ui| {
+                                    let ports = self.midi_dsc.ports();
+                                    let current_port = &mut state.current_port;
 
-                            for port in ports {
-                                ui.selectable_value(
-                                    current_port,
-                                    port.clone(),
-                                    self.midi_dsc.port_name(&port).unwrap(),
-                                );
+                                    for port in ports {
+                                        ui.selectable_value(
+                                            current_port,
+                                            port.clone(),
+                                            self.midi_dsc.port_name(&port).unwrap(),
+                                        );
+                                    }
+                                });
+                            let after_port = state.current_port.clone();
+
+                            let mut current_learn_mode: bool = state.learn_mode;
+                            ComboBox::from_label("MIDI event source")
+                                .selected_text(if state.learn_mode { "Learn" } else { "Custom" })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut current_learn_mode, true, "Learn");
+                                    ui.selectable_value(&mut current_learn_mode, false, "Custom")
+                                });
+                            state.learn_mode = current_learn_mode;
+
+                            let (mut sel_channel, mut is_cc, mut sel_value) =
+                                match state.clone().learn_msg {
+                                    None => (Channel::Ch1, true, 0u8),
+                                    Some(msg) => match msg {
+                                        MidiMsg::ChannelVoice { channel, msg } => {
+                                            let (is_cc, value) = match msg {
+                                                ChannelVoiceMsg::ControlChange { control } => {
+                                                    let value = match control {
+                                                        CC { control, value: _ } => control,
+                                                        _ => (0u8),
+                                                    };
+                                                    (true, value)
+                                                }
+                                                ChannelVoiceMsg::NoteOff { note, velocity: _ }
+                                                | ChannelVoiceMsg::NoteOn { note, velocity: _ } => {
+                                                    (false, note)
+                                                }
+                                                _ => (false, 0),
+                                            };
+                                            (channel, is_cc, value)
+                                        }
+                                        _ => (Channel::Ch1, true, 0u8),
+                                    },
+                                };
+
+                            if state.learn_mode {
+                                ui.label(format!("Channel: {}", sel_channel));
+                                if is_cc {
+                                    ui.label(format!("CC: {}", sel_value));
+                                } else {
+                                    ui.label(format!("Note: {}", sel_value));
+                                }
+                                if ui
+                                    .add(Button::new(if state.learning {
+                                        "Learning..."
+                                    } else {
+                                        "Learn"
+                                    }))
+                                    .clicked()
+                                {
+                                    state.learning = true;
+                                }
+                            } else {
+                                ComboBox::from_label("Channel")
+                                    .selected_text(sel_channel.to_string())
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch1, "Ch1");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch2, "Ch2");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch3, "Ch3");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch4, "Ch4");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch5, "Ch5");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch6, "Ch6");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch7, "Ch7");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch8, "Ch8");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch9, "Ch9");
+                                        ui.selectable_value(
+                                            &mut sel_channel,
+                                            Channel::Ch10,
+                                            "Ch10",
+                                        );
+                                        ui.selectable_value(
+                                            &mut sel_channel,
+                                            Channel::Ch11,
+                                            "Ch11",
+                                        );
+                                        ui.selectable_value(
+                                            &mut sel_channel,
+                                            Channel::Ch12,
+                                            "Ch12",
+                                        );
+                                        ui.selectable_value(
+                                            &mut sel_channel,
+                                            Channel::Ch13,
+                                            "Ch13",
+                                        );
+                                        ui.selectable_value(
+                                            &mut sel_channel,
+                                            Channel::Ch14,
+                                            "Ch14",
+                                        );
+                                        ui.selectable_value(
+                                            &mut sel_channel,
+                                            Channel::Ch15,
+                                            "Ch15",
+                                        );
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch16, "Ch16")
+                                    });
+                                ComboBox::from_label("Type")
+                                    .selected_text(if is_cc { "CC" } else { "Note" })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut is_cc, true, "CC");
+                                        ui.selectable_value(&mut is_cc, false, "Note");
+                                    });
+
+                                ui.horizontal(|ui| {
+                                    ui.add(DragValue::new(&mut sel_value));
+                                    if is_cc {
+                                        ui.label("CC number");
+                                    } else {
+                                        ui.label("Note number");
+                                    }
+                                });
+                                state.learn_msg = Some(MidiMsg::ChannelVoice {
+                                    channel: sel_channel,
+                                    msg: if is_cc {
+                                        ChannelVoiceMsg::ControlChange {
+                                            control: CC {
+                                                control: sel_value,
+                                                value: 0,
+                                            },
+                                        }
+                                    } else {
+                                        ChannelVoiceMsg::NoteOn {
+                                            note: sel_value,
+                                            velocity: 0,
+                                        }
+                                    },
+                                });
                             }
-                        });
-                    let after_port = state.current_port.clone();
-                    let txt = if state.learn_msg == None {
-                        String::from("None")
-                    } else {
-                        format!("{:?}", state.learn_msg.clone().unwrap())
-                    };
-                    ui.label(txt);
-                    if ui
-                        .add(Button::new(if state.learning {
-                            "Learning..."
-                        } else {
-                            "Learn"
-                        }))
-                        .clicked()
-                    {
-                        state.learning = true;
-                    }
-
-                    (before_port, after_port)
-                })
-                .inner
+                            (before_port, after_port)
+                        })
+                        .inner
+                    })
+                    .inner
             };
 
             let tx = self.state.lock().unwrap().tx.clone();
@@ -230,14 +351,14 @@ impl eframe::App for PwvMidiGUI {
                             });
 
                             ui.spacing();
-                                ui.vertical(|ui| {
-                                    for rt in &profile.routes {
-                                        ui.label(format!("{:?}", rt).as_str()); // TODO custom widget for these
-                                    }
-                                });
+                            ui.vertical(|ui| {
+                                for rt in &profile.routes {
+                                    ui.label(format!("{:?}", rt).as_str()); // TODO custom widget for these
+                                }
+                            });
 
-                                ui.end_row();
-                                ui.spacing();
+                            ui.end_row();
+                            ui.spacing();
                         });
                     }
                 }

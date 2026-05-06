@@ -1,5 +1,5 @@
 use crate::behaviours::ToggleBtn;
-use crate::midi_pattern::MidiMsgCallbackTree;
+use crate::midi_pattern::{is_event_valid, MidiMsgCallbackTree};
 use crate::pwv_controllers::{bool_controller, AxisCommand, AxisProvider, BoolCommand, BooleanProvider};
 use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
 use midir::{MidiInput, MidiInputPort};
@@ -26,6 +26,7 @@ pub struct SharedState {
     pub axes: HashMap<AxisCommand, Arc<Mutex<dyn AxisProvider + Send + Sync>>>,
     pub buttons: HashMap<BoolCommand, Arc<Mutex<dyn BooleanProvider + Send + Sync>>>,
     pub learn_msg: Option<MidiMsg>,
+    pub learn_mode: bool,
     pub learning: bool,
 }
 
@@ -48,6 +49,7 @@ impl SharedState {
             axes: HashMap::new(),
             buttons: HashMap::new(),
             learn_msg: None,
+            learn_mode: true,
             learning: false,
         }
     }
@@ -77,24 +79,24 @@ pub async fn main(state: Arc<Mutex<SharedState>>) {
 
     state.lock().unwrap().tx = Some(tx.clone());
 
-    let cmd = BoolCommand::SourceMute {
-        id: Ulid::new(),
-        target: MuteTarget::TargetA
-    };
-    let controller = bool_controller(cmd,
-    Arc::new(Mutex::new(ToggleBtn::new(64, None))),
-    tx.clone());
-    let controller = Arc::new(Mutex::new(controller));
-
-    state.lock().unwrap().midi_tree.insert_callback(&MidiMsg::ChannelVoice {
-        channel: Channel::Ch1,
-        msg: ChannelVoiceMsg::NoteOff {
-            note: 12,
-            velocity: 0,
-        }
-    }, controller.clone()).unwrap();
-
-    state.lock().unwrap().buttons.insert(cmd, controller.clone());
+    // let cmd = BoolCommand::SourceMute {
+    //     id: Ulid::new(),
+    //     target: MuteTarget::TargetA
+    // };
+    // let controller = bool_controller(cmd,
+    // Arc::new(Mutex::new(ToggleBtn::new(64, None))),
+    // tx.clone());
+    // let controller = Arc::new(Mutex::new(controller));
+    //
+    // state.lock().unwrap().midi_tree.insert_callback(&MidiMsg::ChannelVoice {
+    //     channel: Channel::Ch1,
+    //     msg: ChannelVoiceMsg::NoteOff {
+    //         note: 12,
+    //         velocity: 0,
+    //     }
+    // }, controller.clone()).unwrap();
+    //
+    // state.lock().unwrap().buttons.insert(cmd, controller.clone());
 
 
 
@@ -155,7 +157,7 @@ async fn learn_thread(state: Arc<Mutex<SharedState>>) -> JoinHandle<()> {
         if state.lock().unwrap().learning {
             state.lock().unwrap().learn_msg = Some(wait_on_midi_event_changed(state.clone()).await);
             state.lock().unwrap().learning = false;
-            println!("{:?}", state.lock().unwrap().learn_msg);
+            // println!("{:?}", state.lock().unwrap().learn_msg);
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -165,11 +167,9 @@ async fn wait_on_midi_event_changed(state: Arc<Mutex<SharedState>>) -> MidiMsg {
     let start_msg = state.lock().unwrap().last_midi_event.clone();
     loop {
         let event = state.lock().unwrap().last_midi_event.clone();
-        println!("{:?}", event);
+        // println!("{:?}", event);
         if start_msg != event {break;}
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     state.lock().unwrap().last_midi_event.clone().unwrap()
 }
-
-
