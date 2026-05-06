@@ -77,7 +77,6 @@ pub struct CustomRelativeAxis {
     step: u8,
 }
 
-
 pub struct TwosComplimentRelativeAxis {
     curr_val: u8,
     invert: bool,
@@ -142,7 +141,6 @@ impl CustomRelativeAxis {
     }
 }
 
-
 impl AxisBehaviour for TwosComplimentRelativeAxis {
     fn get(&mut self, data: u8) -> u8 {
         let mut offset;
@@ -155,6 +153,7 @@ impl AxisBehaviour for TwosComplimentRelativeAxis {
             offset = -offset;
         }
         self.curr_val = self.curr_val.saturating_add_signed(offset);
+        if self.curr_val > 100 {self.curr_val = 100;}
         self.curr_val
     }
 
@@ -185,6 +184,7 @@ impl AxisBehaviour for SignMagnitudeRelativeAxis {
             offset = -offset;
         }
         self.curr_val = self.curr_val.saturating_add_signed(offset);
+        if self.curr_val > 100 {self.curr_val = 100;}
         self.curr_val
     }
 
@@ -204,16 +204,27 @@ impl SignMagnitudeRelativeAxis {
 
 impl AxisBehaviour for BinaryOffsetRelativeAxis {
     fn get(&mut self, data: u8) -> u8 {
-        let mut offset = data as i16 as i8;
+        let mut offset = (data as i16 -64 ) as i8;
         if self.invert {
             offset = -offset;
         }
         self.curr_val = self.curr_val.saturating_add_signed(offset);
+        if self.curr_val > 100 {self.curr_val = 100;}
+        println!("get: {} -> {} ({})", data, self.curr_val, offset);
         self.curr_val
     }
 
     fn set(&mut self, data: u8) {
+        println!("set: {}", data);
         self.curr_val = data;
     }
 }
 
+impl BinaryOffsetRelativeAxis {
+    pub fn new(invert: Option<bool>) -> BinaryOffsetRelativeAxis {
+        Self {
+            curr_val: 0,
+            invert: invert.unwrap_or(false),
+        }
+    }
+}

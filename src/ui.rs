@@ -24,7 +24,7 @@ pub async fn run(state: Arc<Mutex<SharedState>>) -> io::Result<()> {
     let mut eventloop = EventLoop::<UserEvent>::with_user_event().build().unwrap();
     eventloop.set_control_flow(ControlFlow::Poll);
 
-    let app = PwvMidiGUI::new(state);
+    let app = PwvMidiGUI::new(state.clone());
 
     let mut winit_app = eframe::create_native(
         "Pipeweaver-MIDI",
@@ -130,7 +130,7 @@ impl eframe::App for PwvMidiGUI {
                         conn_ok = false;
                     }
                 }
-                // TODO Learn/custom CC selector.
+
                 Frame::default()
                     .inner_margin(4)
                     .outer_margin(5)
@@ -172,7 +172,7 @@ impl eframe::App for PwvMidiGUI {
                                                 ChannelVoiceMsg::ControlChange { control } => {
                                                     let value = match control {
                                                         CC { control, value: _ } => control,
-                                                        _ => (0u8),
+                                                        _ => 0u8 ,
                                                     };
                                                     (true, value)
                                                 }
@@ -289,78 +289,79 @@ impl eframe::App for PwvMidiGUI {
                     .inner
             };
 
-            let tx = self.state.lock().unwrap().tx.clone();
-            match &self.state.lock().unwrap().status {
+            // let tx = self.state.lock().unwrap().tx.clone();
+
+            let status = self.state.lock().unwrap().status.clone();
+            match status {
                 None => {
                     ui.label("Pipeweaver not connected!");
                 }
                 Some(status) => {
-                    if let Some(tx) = tx {
-                        let profile = &status.audio.profile;
-
-                        egui::scroll_area::ScrollArea::horizontal().show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.spacing();
-                                for psd in &profile.devices.sources.physical_devices {
-                                    let id = psd.description.id;
-                                    let name = psd.description.name.clone();
-                                    ui.add(SourceDeviceWidget {
-                                        bool_states: &mut self.bool_states,
-                                        axis_states: &mut self.axis_states,
-                                        id,
-                                        name,
-                                    });
-                                }
-                                ui.end_row();
-                                ui.spacing();
-                                for vsd in &profile.devices.sources.virtual_devices {
-                                    let id = vsd.description.id;
-                                    let name = vsd.description.name.clone();
-                                    ui.add(SourceDeviceWidget {
-                                        bool_states: &mut self.bool_states,
-                                        axis_states: &mut self.axis_states,
-                                        id,
-                                        name,
-                                    });
-                                }
-                                ui.end_row();
-                                ui.spacing();
-                                for ptd in &profile.devices.targets.physical_devices {
-                                    let id = ptd.description.id;
-                                    let name = ptd.description.name.clone();
-                                    ui.add(TargetDeviceWidget {
-                                        bool_states: &mut self.bool_states,
-                                        axis_states: &mut self.axis_states,
-                                        id,
-                                        name,
-                                    });
-                                }
-                                ui.end_row();
-                                ui.spacing();
-                                for vtd in &profile.devices.targets.virtual_devices {
-                                    let id = vtd.description.id;
-                                    let name = vtd.description.name.clone();
-                                    ui.add(TargetDeviceWidget {
-                                        bool_states: &mut self.bool_states,
-                                        axis_states: &mut self.axis_states,
-                                        id,
-                                        name,
-                                    });
-                                }
-                                ui.end_row();
-                            });
-
+                    let profile = &status.audio.profile;
+                    egui::scroll_area::ScrollArea::horizontal().show(ui, |ui| {
+                        ui.horizontal(|ui| {
                             ui.spacing();
-                            ui.vertical(|ui| {
-                                for rt in &profile.routes {
-                                    ui.label(format!("{:?}", rt).as_str()); // TODO custom widget for these
-                                }
-                            });
-
+                            for psd in &profile.devices.sources.physical_devices {
+                                let id = psd.description.id;
+                                let name = psd.description.name.clone();
+                                ui.add(SourceDeviceWidget {
+                                    bool_states: &mut self.bool_states,
+                                    axis_states: &mut self.axis_states,
+                                    id,
+                                    name,
+                                });
+                            }
                             ui.end_row();
                             ui.spacing();
+                            for vsd in &profile.devices.sources.virtual_devices {
+                                let id = vsd.description.id;
+                                let name = vsd.description.name.clone();
+                                ui.add(SourceDeviceWidget {
+                                    bool_states: &mut self.bool_states,
+                                    axis_states: &mut self.axis_states,
+                                    id,
+                                    name,
+                                });
+                            }
+                            ui.end_row();
+                            ui.spacing();
+                            for ptd in &profile.devices.targets.physical_devices {
+                                let id = ptd.description.id;
+                                let name = ptd.description.name.clone();
+                                ui.add(TargetDeviceWidget {
+                                    state: self.state.clone(),
+                                    bool_states: &mut self.bool_states,
+                                    axis_states: &mut self.axis_states,
+                                    id,
+                                    name,
+                                });
+                            }
+                            ui.end_row();
+                            ui.spacing();
+                            for vtd in &profile.devices.targets.virtual_devices {
+                                let id = vtd.description.id;
+                                let name = vtd.description.name.clone();
+                                ui.add(TargetDeviceWidget {
+                                    state: self.state.clone(),
+                                    bool_states: &mut self.bool_states,
+                                    axis_states: &mut self.axis_states,
+                                    id,
+                                    name,
+                                });
+                            }
+                            ui.end_row();
                         });
-                    }
+
+                        ui.spacing();
+                        ui.vertical(|ui| {
+                            for rt in &profile.routes {
+                                ui.label(format!("{:?}", rt).as_str()); // TODO custom widget for these
+                            }
+                        });
+
+                        ui.end_row();
+                        ui.spacing();
+                    });
                 }
             }
 

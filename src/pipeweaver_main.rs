@@ -1,10 +1,8 @@
-use crate::behaviours::ToggleBtn;
-use crate::midi_pattern::{is_event_valid, MidiMsgCallbackTree};
-use crate::pwv_controllers::{bool_controller, AxisCommand, AxisProvider, BoolCommand, BooleanProvider};
-use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
+use crate::midi_pattern::MidiMsgCallbackTree;
+use crate::pwv_controllers::{AxisCommand, AxisProvider, BoolCommand, BooleanProvider};
+use midi_msg::MidiMsg;
 use midir::{MidiInput, MidiInputPort};
 use pipeweaver_ipc::commands::{DaemonRequest, DaemonStatus};
-use pipeweaver_shared::MuteTarget;
 use pipeweaver_websocket_client::{spawn_pipeweaver_handler, BroadcastMessage};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -14,12 +12,11 @@ use tokio::signal;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
-use ulid::Ulid;
 
 #[derive(Clone)]
 pub struct SharedState {
     pub status: Option<DaemonStatus>,
-    pub tx: Option<Arc<Mutex<Sender<DaemonRequest>>>>,
+    pub tx: Option<Sender<DaemonRequest>>,
     pub current_port: MidiInputPort,
     pub last_midi_event: Option<MidiMsg>,
     pub midi_tree: MidiMsgCallbackTree,
@@ -70,36 +67,7 @@ pub async fn main(state: Arc<Mutex<SharedState>>) {
 
     // let mut can_send: bool = false;
 
-
-    let tx = Arc::new(Mutex::new(tx));
-    // let cmd = AxisCommand::TargetVolume {id: Ulid::new()};
-    // let controller = axis_controller(cmd,
-    // Arc::new(Mutex::new(AbsoluteAxis::new(0, 127, 0, 100))),
-    // tx.clone());
-
     state.lock().unwrap().tx = Some(tx.clone());
-
-    // let cmd = BoolCommand::SourceMute {
-    //     id: Ulid::new(),
-    //     target: MuteTarget::TargetA
-    // };
-    // let controller = bool_controller(cmd,
-    // Arc::new(Mutex::new(ToggleBtn::new(64, None))),
-    // tx.clone());
-    // let controller = Arc::new(Mutex::new(controller));
-    //
-    // state.lock().unwrap().midi_tree.insert_callback(&MidiMsg::ChannelVoice {
-    //     channel: Channel::Ch1,
-    //     msg: ChannelVoiceMsg::NoteOff {
-    //         note: 12,
-    //         velocity: 0,
-    //     }
-    // }, controller.clone()).unwrap();
-    //
-    // state.lock().unwrap().buttons.insert(cmd, controller.clone());
-
-
-
 
     tokio::spawn(learn_thread(state.clone()));
 

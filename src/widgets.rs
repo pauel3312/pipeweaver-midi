@@ -1,9 +1,21 @@
-use crate::pwv_controllers::{AxisCommand, BoolCommand};
+use crate::behaviours::{
+    AbsoluteAxis, AxisBehaviour, BinaryOffsetRelativeAxis, CustomRelativeAxis,
+    SignMagnitudeRelativeAxis, TwosComplimentRelativeAxis,
+};
+use crate::pipeweaver_main::SharedState;
+use crate::pwv_controllers::AxisProvider;
+use crate::pwv_controllers::{AxisCommand, BoolCommand, axis_controller};
+use crate::widgets::AxisBehaviourState::{
+    BinaryOffsetRelative, CustomAbsolute, CustomRelative, MidiAbsolute, SignMagnitudeRelative,
+    TwosComplimentRelative,
+};
 use eframe::emath::Align;
 use egui::{Color32, CornerRadius, DragValue, Frame, Label, Response, Stroke, Ui, Widget};
+use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
 use pipeweaver_shared::{Mix, MuteTarget};
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
+use std::sync::{Arc, Mutex};
 use ulid::Ulid;
 
 #[derive(Debug, Copy, Clone)]
@@ -20,6 +32,27 @@ pub enum AxisBehaviourState {
     SignMagnitudeRelative {},
     CustomRelative { threshold: u8, invert: bool },
     CustomAbsolute { min_in: u8, max_in: u8 },
+}
+
+impl AxisBehaviourState {
+    fn make_behaviour(self) -> Arc<Mutex<dyn AxisBehaviour + Send + Sync>> {
+        match self {
+            BinaryOffsetRelative {} => Arc::new(Mutex::new(BinaryOffsetRelativeAxis::new(None))),
+            MidiAbsolute {} => Arc::new(Mutex::new(AbsoluteAxis::new(0, 127, 0, 100))),
+            TwosComplimentRelative {} => {
+                Arc::new(Mutex::new(TwosComplimentRelativeAxis::new(None)))
+            }
+            SignMagnitudeRelative {} => Arc::new(Mutex::new(SignMagnitudeRelativeAxis::new(None))),
+            CustomRelative { threshold, invert } => Arc::new(Mutex::new(CustomRelativeAxis::new(
+                threshold,
+                Some(invert),
+                None,
+            ))),
+            CustomAbsolute { min_in, max_in } => {
+                Arc::new(Mutex::new(AbsoluteAxis::new(min_in, max_in, 0, 100)))
+            }
+        }
+    }
 }
 
 pub struct MuteWidget<'a> {
@@ -285,6 +318,7 @@ impl<'a> Widget for SourceDeviceWidget<'a> {
 }
 
 pub struct TargetDeviceWidget<'a> {
+    pub state: Arc<Mutex<SharedState>>,
     pub bool_states: &'a mut HashMap<BoolCommand, BoolBehaviourState>,
     pub axis_states: &'a mut HashMap<AxisCommand, AxisBehaviourState>,
     pub id: Ulid,
@@ -293,6 +327,7 @@ pub struct TargetDeviceWidget<'a> {
 impl<'a> Widget for TargetDeviceWidget<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let TargetDeviceWidget {
+            state,
             bool_states,
             axis_states,
             id,
@@ -322,13 +357,56 @@ impl<'a> Widget for TargetDeviceWidget<'a> {
                         .get(&vol_cmd)
                         .cloned()
                         .unwrap_or(AxisBehaviourState::MidiAbsolute {});
-                    // TODO save btns
 
                     ui.vertical(|ui| {
                         ui.add(VolumeWidget {
                             state: &mut axis_state,
                             cmd: vol_cmd,
                         });
+                        // TODO move save btns to Volume and Mute widgets
+                        ui.horizontal(|ui| {
+                            let mut state_guard = state.lock().unwrap();
+
+                            if ui.button("Delete").clicked() {
+                                if let Some(msg) = state_guard.learn_msg.clone() {
+                                    state_guard.midi_tree.rm_callback(&msg);
+                                }
+                                state_guard.axes.remove(&vol_cmd);
+                            }
+
+                            if ui.button("Save").clicked() {
+                                let tx = state_guard.tx.clone().unwrap();
+                                let controller =
+                                    axis_controller(vol_cmd, axis_state.make_behaviour(), tx);
+                                match &state_guard.status {
+                                    None => {}
+                                    Some(status) => match vol_cmd.get_value(status) {
+                                        None => {}
+                                        Some(d) => controller.set(d),
+                                    },
+                                }
+
+                                let controller = Arc::new(Mutex::new(controller));
+
+                                let msg = state_guard.learn_msg.clone().unwrap_or(
+                                    MidiMsg::ChannelVoice {
+                                        channel: Channel::Ch1,
+                                        msg: ChannelVoiceMsg::NoteOn {
+                                            note: 0,
+                                            velocity: 0,
+                                        },
+                                    },
+                                );
+                                println!("{:?}", msg);
+
+                                state_guard
+                                    .midi_tree
+                                    .insert_callback(&msg, controller.clone())
+                                    .unwrap();
+                                state_guard.axes.insert(vol_cmd, controller);
+                            }
+                        });
+
                         ui.add(MuteWidget {
                             state: &mut bool_state,
                             cmd: mute_cmd,

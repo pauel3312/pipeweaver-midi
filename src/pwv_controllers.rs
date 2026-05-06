@@ -21,11 +21,11 @@ pub trait CallbackProvider: Debug {
 #[derive(Debug)]
 pub struct ControllerCore<B: ?Sized> {
     behaviour: Arc<Mutex<B>>,
-    tx: Arc<Mutex<Sender<DaemonRequest>>>,
+    tx: Sender<DaemonRequest>,
 }
 
 impl<B: ?Sized> ControllerCore<B> {
-    pub fn new(behaviour: Arc<Mutex<B>>, tx: Arc<Mutex<Sender<DaemonRequest>>>) -> Self {
+    pub fn new(behaviour: Arc<Mutex<B>>, tx: Sender<DaemonRequest>) -> Self {
         Self { behaviour, tx }
     }
 
@@ -35,7 +35,7 @@ impl<B: ?Sized> ControllerCore<B> {
     }
 
     pub fn send(&self, req: DaemonRequest) {
-        let _ = self.tx.lock().unwrap().send(req);
+        self.tx.try_send(req).unwrap();
     }
 }
 
@@ -53,7 +53,7 @@ where
 {
     pub fn new(
         behaviour: Arc<Mutex<dyn AxisBehaviour + Send + Sync>>,
-        tx: Arc<Mutex<Sender<DaemonRequest>>>,
+        tx: Sender<DaemonRequest>,
         drq_map: F,
     ) -> Self {
         Self {
@@ -106,7 +106,7 @@ where
 {
     pub fn new(
         behaviour: Arc<Mutex<dyn BooleanBehaviour + Send + Sync>>,
-        tx: Arc<Mutex<Sender<DaemonRequest>>>,
+        tx: Sender<DaemonRequest>,
         drq_map: F,
     ) -> Self {
         Self {
@@ -302,7 +302,7 @@ impl BoolCommand {
 pub fn axis_controller(
     command: AxisCommand,
     behaviour: Arc<Mutex<dyn AxisBehaviour + Send + Sync>>,
-    tx: Arc<Mutex<Sender<DaemonRequest>>>
+    tx: Sender<DaemonRequest>
 ) -> impl AxisProvider + CallbackProvider + Send + Sync {
     AxisController::new(behaviour, tx, move |data: u8| {command.to_request(data)})
 }
@@ -310,7 +310,7 @@ pub fn axis_controller(
 pub fn bool_controller(
     command: BoolCommand,
     behaviour: Arc<Mutex<dyn BooleanBehaviour + Send + Sync>>,
-    tx: Arc<Mutex<Sender<DaemonRequest>>>
+    tx: Sender<DaemonRequest>
 ) -> impl BooleanProvider + CallbackProvider + Send + Sync {
     BooleanController::new(behaviour, tx, move |data: bool| {command.to_request(data)})
 }
