@@ -1,10 +1,8 @@
-use crate::behaviours::{
-    AbsoluteAxis, AxisBehaviour, BinaryOffsetRelativeAxis, CustomRelativeAxis,
-    SignMagnitudeRelativeAxis, TwosComplimentRelativeAxis,
-};
+use crate::behaviours::{AbsoluteAxis, AxisBehaviour, BinaryOffsetRelativeAxis, BooleanBehaviour, CustomRelativeAxis, PushBtn, SignMagnitudeRelativeAxis, ToggleBtn, TwosComplimentRelativeAxis};
 use crate::pipeweaver_main::SharedState;
-use crate::pwv_controllers::AxisProvider;
-use crate::pwv_controllers::{AxisCommand, BoolCommand, axis_controller};
+use crate::pwv_controllers::BooleanProvider;
+use crate::pwv_controllers::{axis_controller, AxisCommand, BoolCommand};
+use crate::pwv_controllers::{bool_controller, AxisProvider};
 use crate::widgets::AxisBehaviourState::{
     BinaryOffsetRelative, CustomAbsolute, CustomRelative, MidiAbsolute, SignMagnitudeRelative,
     TwosComplimentRelative,
@@ -34,6 +32,21 @@ pub enum AxisBehaviourState {
     CustomAbsolute { min_in: u8, max_in: u8 },
 }
 
+
+impl BoolBehaviourState {
+    fn make_behaviour(self) -> Arc<Mutex<dyn BooleanBehaviour + Send + Sync>> {
+        match self {
+            BoolBehaviourState::Toggle { threshold, invert } => {
+                Arc::new(Mutex::new(
+                    ToggleBtn::new(threshold, Some(invert))))
+            }
+            BoolBehaviourState::Push { threshold, invert } => {
+                    Arc::new(Mutex::new(PushBtn::new(threshold, Some(invert))))
+            }
+        }
+    }
+}
+
 impl AxisBehaviourState {
     fn make_behaviour(self) -> Arc<Mutex<dyn AxisBehaviour + Send + Sync>> {
         match self {
@@ -56,13 +69,14 @@ impl AxisBehaviourState {
 }
 
 pub struct MuteWidget<'a> {
+    pub shared_state: Arc<Mutex<SharedState>>,
     pub state: &'a mut BoolBehaviourState,
     pub cmd: BoolCommand,
 }
 
 impl<'a> Widget for MuteWidget<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let MuteWidget { state, cmd } = self;
+        let MuteWidget { shared_state, state, cmd } = self;
 
         ui.vertical(|ui| {
             ui.set_min_width(100f32);
@@ -113,101 +127,137 @@ impl<'a> Widget for MuteWidget<'a> {
             });
 
             ui.checkbox(invert, "Invert");
+            ui.horizontal(|ui| {
+                let mut state_guard = shared_state.lock().unwrap();
+
+                if ui.button("Delete").clicked() {
+                    if let Some(msg) = state_guard.learn_msg.clone() {
+                        state_guard.midi_tree.rm_callback(&msg);
+                    }
+                    state_guard.buttons.remove(&cmd);
+                }
+
+                if ui.button("Save").clicked() {
+                    let tx = state_guard.tx.clone().unwrap();
+                    let controller =
+                        bool_controller(cmd, state.make_behaviour(), tx);
+                    match &state_guard.status {
+                        None => {}
+                        Some(status) => match cmd.get_value(status) {
+                            None => {}
+                            Some(d) => controller.set(d),
+                        },
+                    }
+
+                    let controller = Arc::new(Mutex::new(controller));
+
+                    let msg = state_guard.learn_msg.clone().unwrap_or(
+                        MidiMsg::ChannelVoice {
+                            channel: Channel::Ch1,
+                            msg: ChannelVoiceMsg::NoteOn {
+                                note: 0,
+                                velocity: 0,
+                            },
+                        },
+                    );
+                    println!("{:?}", msg);
+
+                    state_guard
+                        .midi_tree
+                        .insert_callback(&msg, controller.clone())
+                        .unwrap();
+                    state_guard.buttons.insert(cmd, controller);
+                }
+            }).response
         })
         .response
     }
 }
 
 pub struct VolumeWidget<'a> {
+    pub shared_state: Arc<Mutex<SharedState>>,
     pub state: &'a mut AxisBehaviourState,
     pub cmd: AxisCommand,
 }
 
 impl<'a> Widget for VolumeWidget<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let VolumeWidget { state, cmd } = self;
+        let VolumeWidget {
+            shared_state,
+            state,
+            cmd,
+        } = self;
         ui.vertical(|ui| {
             ui.set_min_width(100f32);
             ui.label("Volume");
             egui::ComboBox::from_id_salt(cmd)
                 .selected_text(match state {
-                    AxisBehaviourState::BinaryOffsetRelative { .. } => "Binary Offset Relative",
-                    AxisBehaviourState::MidiAbsolute { .. } => "Absolute",
-                    AxisBehaviourState::TwosComplimentRelative { .. } => {
-                        "Two's Compliment Relative"
-                    }
-                    AxisBehaviourState::SignMagnitudeRelative { .. } => "Sign Magnitude Relative",
-                    AxisBehaviourState::CustomRelative { .. } => "Custom Relative",
-                    AxisBehaviourState::CustomAbsolute { .. } => "Custom Absolute",
+                    BinaryOffsetRelative { .. } => "Binary Offset Relative",
+                    MidiAbsolute { .. } => "Absolute",
+                    TwosComplimentRelative { .. } => "Two's Compliment Relative",
+                    SignMagnitudeRelative { .. } => "Sign Magnitude Relative",
+                    CustomRelative { .. } => "Custom Relative",
+                    CustomAbsolute { .. } => "Custom Absolute",
                 })
                 .show_ui(ui, |ui| {
                     if ui
                         .selectable_label(
-                            matches!(state, AxisBehaviourState::BinaryOffsetRelative { .. }),
+                            matches!(state, BinaryOffsetRelative { .. }),
                             "Binary Offset Relative",
                         )
                         .clicked()
                     {
-                        if !matches! {state, AxisBehaviourState::BinaryOffsetRelative { .. }} {
-                            *state = AxisBehaviourState::BinaryOffsetRelative {};
+                        if !matches! {state, BinaryOffsetRelative { .. }} {
+                            *state = BinaryOffsetRelative {};
                         }
                     }
                     if ui
-                        .selectable_label(
-                            matches!(state, AxisBehaviourState::MidiAbsolute { .. }),
-                            "Absolute",
-                        )
+                        .selectable_label(matches!(state, MidiAbsolute { .. }), "Absolute")
                         .clicked()
                     {
-                        if !matches!(state, AxisBehaviourState::MidiAbsolute { .. }) {
-                            *state = AxisBehaviourState::MidiAbsolute {};
+                        if !matches!(state, MidiAbsolute { .. }) {
+                            *state = MidiAbsolute {};
                         }
                     }
                     if ui
                         .selectable_label(
-                            matches!(state, AxisBehaviourState::TwosComplimentRelative { .. }),
+                            matches!(state, TwosComplimentRelative { .. }),
                             "Two's Compliment Relative",
                         )
                         .clicked()
                     {
-                        if !matches!(state, AxisBehaviourState::TwosComplimentRelative { .. }) {
-                            *state = AxisBehaviourState::TwosComplimentRelative {}
+                        if !matches!(state, TwosComplimentRelative { .. }) {
+                            *state = TwosComplimentRelative {}
                         }
                     }
                     if ui
                         .selectable_label(
-                            matches!(state, AxisBehaviourState::SignMagnitudeRelative { .. }),
+                            matches!(state, SignMagnitudeRelative { .. }),
                             "Sign Magnitude Relative",
                         )
                         .clicked()
                     {
-                        if !matches!(state, AxisBehaviourState::SignMagnitudeRelative { .. }) {
-                            *state = AxisBehaviourState::SignMagnitudeRelative {};
+                        if !matches!(state, SignMagnitudeRelative { .. }) {
+                            *state = SignMagnitudeRelative {};
                         }
                     }
                     if ui
-                        .selectable_label(
-                            matches!(state, AxisBehaviourState::CustomRelative { .. }),
-                            "Custom Relative",
-                        )
+                        .selectable_label(matches!(state, CustomRelative { .. }), "Custom Relative")
                         .clicked()
                     {
-                        if !matches!(state, AxisBehaviourState::CustomRelative { .. }) {
-                            *state = AxisBehaviourState::CustomRelative {
+                        if !matches!(state, CustomRelative { .. }) {
+                            *state = CustomRelative {
                                 invert: false,
                                 threshold: 64,
                             }
                         }
                     }
                     if ui
-                        .selectable_label(
-                            matches!(state, AxisBehaviourState::CustomAbsolute { .. }),
-                            "Custom Absolute",
-                        )
+                        .selectable_label(matches!(state, CustomAbsolute { .. }), "Custom Absolute")
                         .clicked()
                     {
-                        if !matches!(state, AxisBehaviourState::CustomAbsolute { .. }) {
-                            *state = AxisBehaviourState::CustomAbsolute {
+                        if !matches!(state, CustomAbsolute { .. }) {
+                            *state = CustomAbsolute {
                                 min_in: 0,
                                 max_in: 127,
                             }
@@ -216,7 +266,7 @@ impl<'a> Widget for VolumeWidget<'a> {
                 });
 
             match &mut *state {
-                AxisBehaviourState::CustomRelative { threshold, invert } => {
+                CustomRelative { threshold, invert } => {
                     ui.horizontal(|ui| {
                         ui.add(
                             DragValue::new(&mut *threshold).range(RangeInclusive::new(0u8, 127u8)),
@@ -225,12 +275,9 @@ impl<'a> Widget for VolumeWidget<'a> {
                     });
                     ui.checkbox(&mut *invert, "Invert");
                 }
-                AxisBehaviourState::CustomAbsolute { min_in, max_in } => {
+                CustomAbsolute { min_in, max_in } => {
                     ui.horizontal(|ui| {
-                        ui.add(
-                            egui::DragValue::new(&mut *min_in)
-                                .range(RangeInclusive::new(0u8, 127u8)),
-                        );
+                        ui.add(DragValue::new(&mut *min_in).range(RangeInclusive::new(0u8, 127u8)));
                         ui.label("minimum input");
                     });
                     ui.horizontal(|ui| {
@@ -240,12 +287,56 @@ impl<'a> Widget for VolumeWidget<'a> {
                 }
                 _ => {}
             }
+            ui.horizontal(|ui| {
+                let mut state_guard = shared_state.lock().unwrap();
+
+                if ui.button("Delete").clicked() {
+                    if let Some(msg) = state_guard.learn_msg.clone() {
+                        state_guard.midi_tree.rm_callback(&msg);
+                    }
+                    state_guard.axes.remove(&self.cmd);
+                }
+
+                if ui.button("Save").clicked() {
+                    let tx = state_guard.tx.clone().unwrap();
+                    let controller = axis_controller(cmd, state.make_behaviour(), tx);
+                    match &state_guard.status {
+                        None => {}
+                        Some(status) => match cmd.get_value(status) {
+                            None => {}
+                            Some(d) => controller.set(d),
+                        },
+                    }
+
+                    let controller = Arc::new(Mutex::new(controller));
+
+                    let msg = state_guard
+                        .learn_msg
+                        .clone()
+                        .unwrap_or(MidiMsg::ChannelVoice {
+                            channel: Channel::Ch1,
+                            msg: ChannelVoiceMsg::NoteOn {
+                                note: 0,
+                                velocity: 0,
+                            },
+                        });
+                    println!("{:?}", msg);
+
+                    state_guard
+                        .midi_tree
+                        .insert_callback(&msg, controller.clone())
+                        .unwrap();
+                    state_guard.axes.insert(cmd, controller);
+                }
+            })
+            .response
         })
-        .response
+        .inner
     }
 }
 
 pub struct SourceDeviceWidget<'a> {
+    pub state: Arc<Mutex<SharedState>>,
     pub bool_states: &'a mut HashMap<BoolCommand, BoolBehaviourState>,
     pub axis_states: &'a mut HashMap<AxisCommand, AxisBehaviourState>,
     pub id: Ulid,
@@ -255,6 +346,7 @@ pub struct SourceDeviceWidget<'a> {
 impl<'a> Widget for SourceDeviceWidget<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let SourceDeviceWidget {
+            state,
             bool_states,
             axis_states,
             id,
@@ -288,18 +380,17 @@ impl<'a> Widget for SourceDeviceWidget<'a> {
                                     invert: false,
                                 },
                             );
-                            let mut axis_state = axis_states
-                                .get(&vol)
-                                .cloned()
-                                .unwrap_or(AxisBehaviourState::MidiAbsolute {});
-                            // TODO save btns
+                            let mut axis_state =
+                                axis_states.get(&vol).cloned().unwrap_or(MidiAbsolute {});
 
                             ui.vertical(|ui| {
                                 ui.add(VolumeWidget {
+                                    shared_state: state.clone(),
                                     state: &mut axis_state,
                                     cmd: vol,
                                 });
                                 ui.add(MuteWidget {
+                                    shared_state: state.clone(),
                                     state: &mut bool_state,
                                     cmd,
                                 })
@@ -356,61 +447,17 @@ impl<'a> Widget for TargetDeviceWidget<'a> {
                     let mut axis_state = axis_states
                         .get(&vol_cmd)
                         .cloned()
-                        .unwrap_or(AxisBehaviourState::MidiAbsolute {});
+                        .unwrap_or(MidiAbsolute {});
 
-                    ui.vertical(|ui| {
-                        ui.add(VolumeWidget {
-                            state: &mut axis_state,
-                            cmd: vol_cmd,
-                        });
-                        // TODO move save btns to Volume and Mute widgets
-                        ui.horizontal(|ui| {
-                            let mut state_guard = state.lock().unwrap();
-
-                            if ui.button("Delete").clicked() {
-                                if let Some(msg) = state_guard.learn_msg.clone() {
-                                    state_guard.midi_tree.rm_callback(&msg);
-                                }
-                                state_guard.axes.remove(&vol_cmd);
-                            }
-
-                            if ui.button("Save").clicked() {
-                                let tx = state_guard.tx.clone().unwrap();
-                                let controller =
-                                    axis_controller(vol_cmd, axis_state.make_behaviour(), tx);
-                                match &state_guard.status {
-                                    None => {}
-                                    Some(status) => match vol_cmd.get_value(status) {
-                                        None => {}
-                                        Some(d) => controller.set(d),
-                                    },
-                                }
-
-                                let controller = Arc::new(Mutex::new(controller));
-
-                                let msg = state_guard.learn_msg.clone().unwrap_or(
-                                    MidiMsg::ChannelVoice {
-                                        channel: Channel::Ch1,
-                                        msg: ChannelVoiceMsg::NoteOn {
-                                            note: 0,
-                                            velocity: 0,
-                                        },
-                                    },
-                                );
-                                println!("{:?}", msg);
-
-                                state_guard
-                                    .midi_tree
-                                    .insert_callback(&msg, controller.clone())
-                                    .unwrap();
-                                state_guard.axes.insert(vol_cmd, controller);
-                            }
-                        });
-
-                        ui.add(MuteWidget {
-                            state: &mut bool_state,
-                            cmd: mute_cmd,
-                        })
+                    ui.add(VolumeWidget {
+                        shared_state: state.clone(),
+                        state: &mut axis_state,
+                        cmd: vol_cmd,
+                    });
+                    ui.add(MuteWidget {
+                        shared_state: state.clone(),
+                        state: &mut bool_state,
+                        cmd: mute_cmd,
                     });
 
                     axis_states.insert(vol_cmd, axis_state.clone());

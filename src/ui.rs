@@ -305,6 +305,7 @@ impl eframe::App for PwvMidiGUI {
                                 let id = psd.description.id;
                                 let name = psd.description.name.clone();
                                 ui.add(SourceDeviceWidget {
+                                    state: self.state.clone(),
                                     bool_states: &mut self.bool_states,
                                     axis_states: &mut self.axis_states,
                                     id,
@@ -317,6 +318,7 @@ impl eframe::App for PwvMidiGUI {
                                 let id = vsd.description.id;
                                 let name = vsd.description.name.clone();
                                 ui.add(SourceDeviceWidget {
+                                    state: self.state.clone(),
                                     bool_states: &mut self.bool_states,
                                     axis_states: &mut self.axis_states,
                                     id,

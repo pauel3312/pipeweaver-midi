@@ -3,13 +3,13 @@ mod pipeweaver_main;
 mod pwv_controllers;
 
 mod midi_pattern;
-mod midi_prototypes;
 mod ui;
 mod widgets;
 
 use std::io::Result;
 use std::sync::{Arc, Mutex};
 use crate::pipeweaver_main::SharedState;
+// TODO save/load
 
 #[tokio::main]
 async fn main() -> Result<()> {

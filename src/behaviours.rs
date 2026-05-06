@@ -38,8 +38,8 @@ impl BooleanBehaviour for ToggleBtn {
 }
 
 impl ToggleBtn {
-    pub fn new(threshold: u8, falling_edge: Option<bool>) -> ToggleBtn {
-        ToggleBtn {
+    pub fn new(threshold: u8, falling_edge: Option<bool>) -> Self {
+        Self {
             current_state: false,
             previous_val: false,
             threshold,
@@ -57,6 +57,16 @@ impl BooleanBehaviour for PushBtn {
     }
     fn set(&mut self, _: bool) {}
 }
+
+impl PushBtn {
+    pub fn new(threshold: u8, falling_edge: Option<bool>) -> Self {
+        Self {
+            threshold,
+            invert: falling_edge.unwrap_or(false),
+        }
+    }
+}
+
 
 pub trait AxisBehaviour {
     fn get(&mut self, data: u8) -> u8;
@@ -210,12 +220,10 @@ impl AxisBehaviour for BinaryOffsetRelativeAxis {
         }
         self.curr_val = self.curr_val.saturating_add_signed(offset);
         if self.curr_val > 100 {self.curr_val = 100;}
-        println!("get: {} -> {} ({})", data, self.curr_val, offset);
         self.curr_val
     }
 
     fn set(&mut self, data: u8) {
-        println!("set: {}", data);
         self.curr_val = data;
     }
 }
