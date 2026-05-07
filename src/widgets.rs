@@ -1,8 +1,11 @@
-use crate::behaviours::{AbsoluteAxis, AxisBehaviour, BinaryOffsetRelativeAxis, BooleanBehaviour, CustomRelativeAxis, PushBtn, SignMagnitudeRelativeAxis, ToggleBtn, TwosComplimentRelativeAxis};
+use crate::behaviours::{
+    AbsoluteAxis, AxisBehaviour, BinaryOffsetRelativeAxis, BooleanBehaviour, CustomRelativeAxis,
+    PushBtn, SignMagnitudeRelativeAxis, ToggleBtn, TwosComplimentRelativeAxis,
+};
 use crate::pipeweaver_main::SharedState;
 use crate::pwv_controllers::BooleanProvider;
-use crate::pwv_controllers::{axis_controller, AxisCommand, BoolCommand};
-use crate::pwv_controllers::{bool_controller, AxisProvider};
+use crate::pwv_controllers::{AxisCommand, BoolCommand, axis_controller};
+use crate::pwv_controllers::{AxisProvider, bool_controller};
 use crate::widgets::AxisBehaviourState::{
     BinaryOffsetRelative, CustomAbsolute, CustomRelative, MidiAbsolute, SignMagnitudeRelative,
     TwosComplimentRelative,
@@ -32,16 +35,14 @@ pub enum AxisBehaviourState {
     CustomAbsolute { min_in: u8, max_in: u8 },
 }
 
-
 impl BoolBehaviourState {
     fn make_behaviour(self) -> Arc<Mutex<dyn BooleanBehaviour + Send + Sync>> {
         match self {
             BoolBehaviourState::Toggle { threshold, invert } => {
-                Arc::new(Mutex::new(
-                    ToggleBtn::new(threshold, Some(invert))))
+                Arc::new(Mutex::new(ToggleBtn::new(threshold, Some(invert))))
             }
             BoolBehaviourState::Push { threshold, invert } => {
-                    Arc::new(Mutex::new(PushBtn::new(threshold, Some(invert))))
+                Arc::new(Mutex::new(PushBtn::new(threshold, Some(invert))))
             }
         }
     }
@@ -68,19 +69,30 @@ impl AxisBehaviourState {
     }
 }
 
-pub struct MuteWidget<'a> {
+pub struct ButtonWidget<'a> {
     pub shared_state: Arc<Mutex<SharedState>>,
     pub state: &'a mut BoolBehaviourState,
     pub cmd: BoolCommand,
+    pub name: Option<&'a str>,
 }
 
-impl<'a> Widget for MuteWidget<'a> {
+impl<'a> Widget for ButtonWidget<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let MuteWidget { shared_state, state, cmd } = self;
+        let ButtonWidget {
+            shared_state,
+            state,
+            cmd,
+            name,
+        } = self;
 
         ui.vertical(|ui| {
             ui.set_min_width(100f32);
-            ui.add(Label::new("Mute").halign(Align::Center));
+            match name {
+                Some(name) => {
+                    ui.add(Label::new(name).halign(Align::Center));
+                }
+                None => {}
+            }
 
             egui::ComboBox::from_id_salt(cmd)
                 .selected_text(match state {
@@ -139,8 +151,7 @@ impl<'a> Widget for MuteWidget<'a> {
 
                 if ui.button("Save").clicked() {
                     let tx = state_guard.tx.clone().unwrap();
-                    let controller =
-                        bool_controller(cmd, state.make_behaviour(), tx);
+                    let controller = bool_controller(cmd, state.make_behaviour(), tx);
                     match &state_guard.status {
                         None => {}
                         Some(status) => match cmd.get_value(status) {
@@ -151,15 +162,16 @@ impl<'a> Widget for MuteWidget<'a> {
 
                     let controller = Arc::new(Mutex::new(controller));
 
-                    let msg = state_guard.learn_msg.clone().unwrap_or(
-                        MidiMsg::ChannelVoice {
+                    let msg = state_guard
+                        .learn_msg
+                        .clone()
+                        .unwrap_or(MidiMsg::ChannelVoice {
                             channel: Channel::Ch1,
                             msg: ChannelVoiceMsg::NoteOn {
                                 note: 0,
                                 velocity: 0,
                             },
-                        },
-                    );
+                        });
                     println!("{:?}", msg);
 
                     state_guard
@@ -168,7 +180,8 @@ impl<'a> Widget for MuteWidget<'a> {
                         .unwrap();
                     state_guard.buttons.insert(cmd, controller);
                 }
-            }).response
+            })
+            .response
         })
         .response
     }
@@ -389,10 +402,11 @@ impl<'a> Widget for SourceDeviceWidget<'a> {
                                     state: &mut axis_state,
                                     cmd: vol,
                                 });
-                                ui.add(MuteWidget {
+                                ui.add(ButtonWidget {
                                     shared_state: state.clone(),
                                     state: &mut bool_state,
                                     cmd,
+                                    name: Some("Mute"),
                                 })
                             });
 
@@ -454,10 +468,11 @@ impl<'a> Widget for TargetDeviceWidget<'a> {
                         state: &mut axis_state,
                         cmd: vol_cmd,
                     });
-                    ui.add(MuteWidget {
+                    ui.add(ButtonWidget {
                         shared_state: state.clone(),
                         state: &mut bool_state,
                         cmd: mute_cmd,
+                        name: Some("Mute"),
                     });
 
                     axis_states.insert(vol_cmd, axis_state.clone());
@@ -466,5 +481,84 @@ impl<'a> Widget for TargetDeviceWidget<'a> {
                 .response
             })
             .inner
+    }
+}
+
+pub struct RoutingTableWidget<'a> {
+    pub state: Arc<Mutex<SharedState>>,
+    pub bool_states: &'a mut HashMap<BoolCommand, BoolBehaviourState>,
+}
+
+impl<'a> Widget for RoutingTableWidget<'a> {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let RoutingTableWidget { state, bool_states } = self;
+        let status = state.lock().unwrap().status.clone().unwrap();
+        let mut targets: Vec<(Ulid, String)> = Vec::new();
+        for ptd in status.audio.profile.devices.targets.physical_devices {
+            targets.push((ptd.description.id, ptd.description.name));
+        }
+        for vtd in status.audio.profile.devices.targets.virtual_devices {
+            targets.push((vtd.description.id, vtd.description.name));
+        }
+        let mut sources: HashMap<Ulid, String> = HashMap::new();
+        for psd in status.audio.profile.devices.sources.physical_devices {
+            sources.insert(psd.description.id, psd.description.name);
+        }
+        for vsd in status.audio.profile.devices.sources.virtual_devices {
+            sources.insert(vsd.description.id, vsd.description.name);
+        }
+
+        Frame::default()
+            .inner_margin(8)
+            .outer_margin(5)
+            .stroke(Stroke::new(3.0, Color32::DARK_GRAY))
+            .corner_radius(CornerRadius::same(10))
+            .show(ui, |ui| {
+                egui::Grid::new("routing_grid")
+                    .striped(true)
+                    .spacing([12.0, 10.0])
+                    .min_col_width(100.0)
+                    .show(ui, |ui| {
+                        ui.label("");
+
+                        for route in &status.audio.profile.routes {
+                            ui.label(format!("{}", sources[&route.0]));
+                        }
+
+                        ui.end_row();
+
+                        for tgt in targets.iter().cloned() {
+                            ui.label(format!("{}", tgt.1));
+
+                            for route in &status.audio.profile.routes {
+                                let cmd = BoolCommand::Route {
+                                    in_id: *route.0,
+                                    out_id: tgt.0,
+                                };
+
+                                let mut route_state = bool_states
+                                    .get(&cmd)
+                                    .cloned()
+                                    .unwrap_or(BoolBehaviourState::Toggle {
+                                        threshold: 64,
+                                        invert: false,
+                                    });
+
+                                ui.centered_and_justified(|ui| {
+                                    ui.add(ButtonWidget {
+                                        shared_state: state.clone(),
+                                        state: &mut route_state,
+                                        cmd,
+                                        name: None,
+                                    });
+                                });
+                                bool_states.insert(cmd, route_state.clone());
+
+                            }
+
+                            ui.end_row();
+                        }
+                    });
+            }).response
     }
 }

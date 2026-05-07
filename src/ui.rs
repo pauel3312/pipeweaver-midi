@@ -2,7 +2,8 @@ use crate::midi_pattern::is_event_valid;
 use crate::pipeweaver_main::SharedState;
 use crate::pwv_controllers::{AxisCommand, BoolCommand};
 use crate::widgets::{
-    AxisBehaviourState, BoolBehaviourState, SourceDeviceWidget, TargetDeviceWidget,
+    AxisBehaviourState, BoolBehaviourState, RoutingTableWidget, SourceDeviceWidget,
+    TargetDeviceWidget,
 };
 use eframe::epaint::{Color32, CornerRadius, Stroke};
 use eframe::{EframePumpStatus, UserEvent};
@@ -172,7 +173,7 @@ impl eframe::App for PwvMidiGUI {
                                                 ChannelVoiceMsg::ControlChange { control } => {
                                                     let value = match control {
                                                         CC { control, value: _ } => control,
-                                                        _ => 0u8 ,
+                                                        _ => 0u8,
                                                     };
                                                     (true, value)
                                                 }
@@ -356,9 +357,10 @@ impl eframe::App for PwvMidiGUI {
 
                         ui.spacing();
                         ui.vertical(|ui| {
-                            for rt in &profile.routes {
-                                ui.label(format!("{:?}", rt).as_str()); // TODO custom widget for these
-                            }
+                            ui.add(RoutingTableWidget {
+                                state: self.state.clone(),
+                                bool_states: &mut self.bool_states,
+                            });
                         });
 
                         ui.end_row();
