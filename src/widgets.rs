@@ -1,7 +1,4 @@
-use crate::behaviours::{
-    AbsoluteAxis, AxisBehaviour, BinaryOffsetRelativeAxis, BooleanBehaviour, CustomRelativeAxis,
-    PushBtn, SignMagnitudeRelativeAxis, ToggleBtn, TwosComplimentRelativeAxis,
-};
+use crate::behaviours::{AbsoluteAxis, AxisBehaviour, AxisBehaviourTrait, BinaryOffsetRelativeAxis, BooleanBehaviour, BooleanBehaviourTrait, CustomRelativeAxis, PushBtn, SignMagnitudeRelativeAxis, ToggleBtn, TwosComplimentRelativeAxis};
 use crate::pipeweaver_main::SharedState;
 use crate::pwv_controllers::BooleanProvider;
 use crate::pwv_controllers::{AxisCommand, BoolCommand, axis_controller};
@@ -36,36 +33,40 @@ pub enum AxisBehaviourState {
 }
 
 impl BoolBehaviourState {
-    fn make_behaviour(self) -> Arc<Mutex<dyn BooleanBehaviour + Send + Sync>> {
-        match self {
+    fn make_behaviour(self) -> Arc<Mutex<BooleanBehaviour>> {
+        let behaviour = match self {
             BoolBehaviourState::Toggle { threshold, invert } => {
-                Arc::new(Mutex::new(ToggleBtn::new(threshold, Some(invert))))
+                BooleanBehaviour::Toggle(ToggleBtn::new(threshold, Some(invert)))
             }
             BoolBehaviourState::Push { threshold, invert } => {
-                Arc::new(Mutex::new(PushBtn::new(threshold, Some(invert))))
+                BooleanBehaviour::Push(PushBtn::new(threshold, Some(invert)))
             }
-        }
+        };
+        Arc::new(Mutex::new(behaviour))
     }
 }
 
 impl AxisBehaviourState {
-    fn make_behaviour(self) -> Arc<Mutex<dyn AxisBehaviour + Send + Sync>> {
-        match self {
-            BinaryOffsetRelative {} => Arc::new(Mutex::new(BinaryOffsetRelativeAxis::new(None))),
-            MidiAbsolute {} => Arc::new(Mutex::new(AbsoluteAxis::new(0, 127, 0, 100))),
+    fn make_behaviour(self) -> Arc<Mutex<AxisBehaviour>> {
+        let behaviour = match self {
+            BinaryOffsetRelative {} => {
+                AxisBehaviour::BinaryOffsetRelative(BinaryOffsetRelativeAxis::new(None))
+            }
+            MidiAbsolute {} => AxisBehaviour::Absolute(AbsoluteAxis::new(0, 127, 0, 100)),
             TwosComplimentRelative {} => {
-                Arc::new(Mutex::new(TwosComplimentRelativeAxis::new(None)))
+                AxisBehaviour::TwosComplimentRelative(TwosComplimentRelativeAxis::new(None))
             }
-            SignMagnitudeRelative {} => Arc::new(Mutex::new(SignMagnitudeRelativeAxis::new(None))),
-            CustomRelative { threshold, invert } => Arc::new(Mutex::new(CustomRelativeAxis::new(
-                threshold,
-                Some(invert),
-                None,
-            ))),
+            SignMagnitudeRelative {} => {
+                AxisBehaviour::SignMagnitudeRelative(SignMagnitudeRelativeAxis::new(None))
+            }
+            CustomRelative { threshold, invert } => AxisBehaviour::CustomRelative(
+                CustomRelativeAxis::new(threshold, Some(invert), None),
+            ),
             CustomAbsolute { min_in, max_in } => {
-                Arc::new(Mutex::new(AbsoluteAxis::new(min_in, max_in, 0, 100)))
+                AxisBehaviour::Absolute(AbsoluteAxis::new(min_in, max_in, 0, 100))
             }
-        }
+        };
+        Arc::new(Mutex::new(behaviour))
     }
 }
 
@@ -321,6 +322,7 @@ impl<'a> Widget for VolumeWidget<'a> {
                         },
                     }
 
+                    // todo savestates are cmd + Behaviour + MidiMsg
                     let controller = Arc::new(Mutex::new(controller));
 
                     let msg = state_guard
@@ -536,13 +538,12 @@ impl<'a> Widget for RoutingTableWidget<'a> {
                                     out_id: tgt.0,
                                 };
 
-                                let mut route_state = bool_states
-                                    .get(&cmd)
-                                    .cloned()
-                                    .unwrap_or(BoolBehaviourState::Toggle {
+                                let mut route_state = bool_states.get(&cmd).cloned().unwrap_or(
+                                    BoolBehaviourState::Toggle {
                                         threshold: 64,
                                         invert: false,
-                                    });
+                                    },
+                                );
 
                                 ui.centered_and_justified(|ui| {
                                     ui.add(ButtonWidget {
@@ -553,12 +554,12 @@ impl<'a> Widget for RoutingTableWidget<'a> {
                                     });
                                 });
                                 bool_states.insert(cmd, route_state.clone());
-
                             }
 
                             ui.end_row();
                         }
                     });
-            }).response
+            })
+            .response
     }
 }

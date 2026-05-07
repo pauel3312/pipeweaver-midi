@@ -1,6 +1,11 @@
-pub trait BooleanBehaviour {
+pub trait BooleanBehaviourTrait {
     fn get(&mut self, data: u8) -> bool;
     fn set(&mut self, data: bool);
+}
+
+pub enum BooleanBehaviour {
+    Toggle(ToggleBtn),
+    Push(PushBtn),
 }
 
 pub struct ToggleBtn {
@@ -15,7 +20,23 @@ pub struct PushBtn {
     invert: bool,
 }
 
-impl BooleanBehaviour for ToggleBtn {
+impl BooleanBehaviourTrait for BooleanBehaviour {
+    fn get(&mut self, data: u8) -> bool {
+        match self {
+            BooleanBehaviour::Toggle(toggle) => toggle.get(data),
+            BooleanBehaviour::Push(push) => push.get(data),
+        }
+    }
+
+    fn set(&mut self, data: bool) {
+        match self {
+            BooleanBehaviour::Toggle(toggle) => toggle.set(data),
+            BooleanBehaviour::Push(push) => push.set(data),
+        }
+    }
+}
+
+impl BooleanBehaviourTrait for ToggleBtn {
     fn get(&mut self, data: u8) -> bool {
         let mut check = data > self.threshold;
         if self.falling_edge {
@@ -47,7 +68,7 @@ impl ToggleBtn {
         }
     }
 }
-impl BooleanBehaviour for PushBtn {
+impl BooleanBehaviourTrait for PushBtn {
     fn get(&mut self, data: u8) -> bool {
         if self.invert {
             data <= self.threshold
@@ -67,10 +88,17 @@ impl PushBtn {
     }
 }
 
-
-pub trait AxisBehaviour {
+pub trait AxisBehaviourTrait {
     fn get(&mut self, data: u8) -> u8;
     fn set(&mut self, data: u8);
+}
+
+pub enum AxisBehaviour {
+    Absolute(AbsoluteAxis),
+    CustomRelative(CustomRelativeAxis),
+    TwosComplimentRelative(TwosComplimentRelativeAxis),
+    SignMagnitudeRelative(SignMagnitudeRelativeAxis),
+    BinaryOffsetRelative(BinaryOffsetRelativeAxis),
 }
 
 pub struct AbsoluteAxis {
@@ -102,7 +130,28 @@ pub struct BinaryOffsetRelativeAxis {
     invert: bool,
 }
 
-impl AxisBehaviour for AbsoluteAxis {
+impl AxisBehaviourTrait for AxisBehaviour {
+    fn get(&mut self, data: u8) -> u8 {
+        match self {
+            AxisBehaviour::Absolute(a) => a.get(data),
+            AxisBehaviour::CustomRelative(a) => a.get(data),
+            AxisBehaviour::TwosComplimentRelative(a) => a.get(data),
+            AxisBehaviour::SignMagnitudeRelative(a) => a.get(data),
+            AxisBehaviour::BinaryOffsetRelative(a) => a.get(data),
+        }
+    }
+    fn set(&mut self, data: u8) {
+        match self {
+            AxisBehaviour::Absolute(a) => a.set(data),
+            AxisBehaviour::CustomRelative(a) => a.set(data),
+            AxisBehaviour::TwosComplimentRelative(a) => a.set(data),
+            AxisBehaviour::SignMagnitudeRelative(a) => a.set(data),
+            AxisBehaviour::BinaryOffsetRelative(a) => a.set(data),
+        }
+    }
+}
+
+impl AxisBehaviourTrait for AbsoluteAxis {
     fn get(&mut self, data: u8) -> u8 {
         ((data - self.min_in) as f32 / (self.max_in - self.min_in) as f32
             * (self.max_out - self.min_out) as f32) as u8
@@ -122,7 +171,7 @@ impl AbsoluteAxis {
     }
 }
 
-impl AxisBehaviour for CustomRelativeAxis {
+impl AxisBehaviourTrait for CustomRelativeAxis {
     fn get(&mut self, data: u8) -> u8 {
         let mut check = data > self.threshold;
         if self.invert {
@@ -151,7 +200,7 @@ impl CustomRelativeAxis {
     }
 }
 
-impl AxisBehaviour for TwosComplimentRelativeAxis {
+impl AxisBehaviourTrait for TwosComplimentRelativeAxis {
     fn get(&mut self, data: u8) -> u8 {
         let mut offset;
         if data & 0b0100_0000 != 0 {
@@ -163,7 +212,9 @@ impl AxisBehaviour for TwosComplimentRelativeAxis {
             offset = -offset;
         }
         self.curr_val = self.curr_val.saturating_add_signed(offset);
-        if self.curr_val > 100 {self.curr_val = 100;}
+        if self.curr_val > 100 {
+            self.curr_val = 100;
+        }
         self.curr_val
     }
 
@@ -181,7 +232,7 @@ impl TwosComplimentRelativeAxis {
     }
 }
 
-impl AxisBehaviour for SignMagnitudeRelativeAxis {
+impl AxisBehaviourTrait for SignMagnitudeRelativeAxis {
     fn get(&mut self, data: u8) -> u8 {
         let mut offset;
         if data & 0b0100_0000 != 0 {
@@ -194,7 +245,9 @@ impl AxisBehaviour for SignMagnitudeRelativeAxis {
             offset = -offset;
         }
         self.curr_val = self.curr_val.saturating_add_signed(offset);
-        if self.curr_val > 100 {self.curr_val = 100;}
+        if self.curr_val > 100 {
+            self.curr_val = 100;
+        }
         self.curr_val
     }
 
@@ -212,14 +265,16 @@ impl SignMagnitudeRelativeAxis {
     }
 }
 
-impl AxisBehaviour for BinaryOffsetRelativeAxis {
+impl AxisBehaviourTrait for BinaryOffsetRelativeAxis {
     fn get(&mut self, data: u8) -> u8 {
-        let mut offset = (data as i16 -64 ) as i8;
+        let mut offset = (data as i16 - 64) as i8;
         if self.invert {
             offset = -offset;
         }
         self.curr_val = self.curr_val.saturating_add_signed(offset);
-        if self.curr_val > 100 {self.curr_val = 100;}
+        if self.curr_val > 100 {
+            self.curr_val = 100;
+        }
         self.curr_val
     }
 

@@ -1,5 +1,5 @@
 use std::fmt::{Debug, Formatter};
-use crate::behaviours::{AxisBehaviour, BooleanBehaviour};
+use crate::behaviours::{AxisBehaviour, AxisBehaviourTrait, BooleanBehaviour, BooleanBehaviourTrait};
 use pipeweaver_ipc::commands::{APICommand, DaemonRequest, DaemonStatus};
 use pipeweaver_shared::{Mix, MuteState, MuteTarget};
 use std::sync::{Arc, Mutex};
@@ -43,7 +43,7 @@ pub struct AxisController<F>
 where
     F: Fn(u8) -> DaemonRequest + Send + Sync + 'static,
 {
-    core: ControllerCore<dyn AxisBehaviour + Send + Sync>,
+    core: ControllerCore<AxisBehaviour>,
     drq_map: F,
 }
 
@@ -52,7 +52,7 @@ where
     F: Fn(u8) -> DaemonRequest + Send + Sync + 'static,
 {
     pub fn new(
-        behaviour: Arc<Mutex<dyn AxisBehaviour + Send + Sync>>,
+        behaviour: Arc<Mutex<AxisBehaviour>>,
         tx: Sender<DaemonRequest>,
         drq_map: F,
     ) -> Self {
@@ -96,7 +96,7 @@ pub struct BooleanController<F>
 where
     F: Fn(bool) -> DaemonRequest + Send + Sync + 'static,
 {
-    core: ControllerCore<dyn BooleanBehaviour + Send + Sync>,
+    core: ControllerCore<BooleanBehaviour>,
     drq_map: F,
 }
 
@@ -105,7 +105,7 @@ where
     F: Fn(bool) -> DaemonRequest + Send + Sync + 'static,
 {
     pub fn new(
-        behaviour: Arc<Mutex<dyn BooleanBehaviour + Send + Sync>>,
+        behaviour: Arc<Mutex<BooleanBehaviour>>,
         tx: Sender<DaemonRequest>,
         drq_map: F,
     ) -> Self {
@@ -301,7 +301,7 @@ impl BoolCommand {
 }
 pub fn axis_controller(
     command: AxisCommand,
-    behaviour: Arc<Mutex<dyn AxisBehaviour + Send + Sync>>,
+    behaviour: Arc<Mutex<AxisBehaviour>>,
     tx: Sender<DaemonRequest>
 ) -> impl AxisProvider + CallbackProvider + Send + Sync {
     AxisController::new(behaviour, tx, move |data: u8| {command.to_request(data)})
@@ -309,7 +309,7 @@ pub fn axis_controller(
 
 pub fn bool_controller(
     command: BoolCommand,
-    behaviour: Arc<Mutex<dyn BooleanBehaviour + Send + Sync>>,
+    behaviour: Arc<Mutex<BooleanBehaviour>>,
     tx: Sender<DaemonRequest>
 ) -> impl BooleanProvider + CallbackProvider + Send + Sync {
     BooleanController::new(behaviour, tx, move |data: bool| {command.to_request(data)})
