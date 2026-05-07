@@ -3,6 +3,7 @@ use crate::behaviours::{AxisBehaviour, AxisBehaviourTrait, BooleanBehaviour, Boo
 use pipeweaver_ipc::commands::{APICommand, DaemonRequest, DaemonStatus};
 use pipeweaver_shared::{Mix, MuteState, MuteTarget};
 use std::sync::{Arc, Mutex};
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 use ulid::Ulid;
 
@@ -146,13 +147,13 @@ where
 }
 
 // #[derive(Clone, PartialEq, Copy, Debug)]
-#[derive(Eq, Clone, Hash, PartialEq, Copy, Debug)]
+#[derive(Eq, Clone, Hash, PartialEq, Copy, Debug, Serialize, Deserialize)]
 pub enum AxisCommand {
     SourceVolume{id: Ulid, mix: Mix},
     TargetVolume{id: Ulid},
 }
 
-#[derive(Eq, Hash, PartialEq, Clone, Copy, Debug)]
+#[derive(Eq, Hash, PartialEq, Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum BoolCommand {
     Route { in_id: Ulid, out_id: Ulid },
     SourceMute { id: Ulid, target: MuteTarget },
@@ -316,6 +317,7 @@ pub fn bool_controller(
 }
 
 
+#[allow(unused)] // Useful for debugging.
 #[derive(Debug)]
 pub struct PrinterController {
     pub name: String

@@ -1,13 +1,17 @@
+use serde::{Deserialize, Serialize};
+
 pub trait BooleanBehaviourTrait {
     fn get(&mut self, data: u8) -> bool;
     fn set(&mut self, data: bool);
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 pub enum BooleanBehaviour {
     Toggle(ToggleBtn),
     Push(PushBtn),
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 pub struct ToggleBtn {
     current_state: bool,
     previous_val: bool,
@@ -15,6 +19,7 @@ pub struct ToggleBtn {
     falling_edge: bool,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 pub struct PushBtn {
     threshold: u8,
     invert: bool,
@@ -93,6 +98,7 @@ pub trait AxisBehaviourTrait {
     fn set(&mut self, data: u8);
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 pub enum AxisBehaviour {
     Absolute(AbsoluteAxis),
     CustomRelative(CustomRelativeAxis),
@@ -101,6 +107,7 @@ pub enum AxisBehaviour {
     BinaryOffsetRelative(BinaryOffsetRelativeAxis),
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 pub struct AbsoluteAxis {
     min_in: u8,
     max_in: u8,
@@ -108,6 +115,7 @@ pub struct AbsoluteAxis {
     max_out: u8,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 pub struct CustomRelativeAxis {
     curr_val: u8,
     threshold: u8,
@@ -115,16 +123,19 @@ pub struct CustomRelativeAxis {
     step: u8,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 pub struct TwosComplimentRelativeAxis {
     curr_val: u8,
     invert: bool,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 pub struct SignMagnitudeRelativeAxis {
     curr_val: u8,
     invert: bool,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, Copy)]
 pub struct BinaryOffsetRelativeAxis {
     curr_val: u8,
     invert: bool,

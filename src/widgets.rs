@@ -1,4 +1,7 @@
-use crate::behaviours::{AbsoluteAxis, AxisBehaviour, AxisBehaviourTrait, BinaryOffsetRelativeAxis, BooleanBehaviour, BooleanBehaviourTrait, CustomRelativeAxis, PushBtn, SignMagnitudeRelativeAxis, ToggleBtn, TwosComplimentRelativeAxis};
+use crate::behaviours::{
+    AbsoluteAxis, AxisBehaviour, BinaryOffsetRelativeAxis, BooleanBehaviour, CustomRelativeAxis,
+    PushBtn, SignMagnitudeRelativeAxis, ToggleBtn, TwosComplimentRelativeAxis,
+};
 use crate::pipeweaver_main::SharedState;
 use crate::pwv_controllers::BooleanProvider;
 use crate::pwv_controllers::{AxisCommand, BoolCommand, axis_controller};
@@ -33,22 +36,21 @@ pub enum AxisBehaviourState {
 }
 
 impl BoolBehaviourState {
-    fn make_behaviour(self) -> Arc<Mutex<BooleanBehaviour>> {
-        let behaviour = match self {
+    fn make_behaviour(self) ->BooleanBehaviour {
+        match self {
             BoolBehaviourState::Toggle { threshold, invert } => {
                 BooleanBehaviour::Toggle(ToggleBtn::new(threshold, Some(invert)))
             }
             BoolBehaviourState::Push { threshold, invert } => {
                 BooleanBehaviour::Push(PushBtn::new(threshold, Some(invert)))
             }
-        };
-        Arc::new(Mutex::new(behaviour))
+        }
     }
 }
 
 impl AxisBehaviourState {
-    fn make_behaviour(self) -> Arc<Mutex<AxisBehaviour>> {
-        let behaviour = match self {
+    fn make_behaviour(self) -> AxisBehaviour {
+        match self {
             BinaryOffsetRelative {} => {
                 AxisBehaviour::BinaryOffsetRelative(BinaryOffsetRelativeAxis::new(None))
             }
@@ -65,8 +67,7 @@ impl AxisBehaviourState {
             CustomAbsolute { min_in, max_in } => {
                 AxisBehaviour::Absolute(AbsoluteAxis::new(min_in, max_in, 0, 100))
             }
-        };
-        Arc::new(Mutex::new(behaviour))
+        }
     }
 }
 
@@ -148,20 +149,12 @@ impl<'a> Widget for ButtonWidget<'a> {
                         state_guard.midi_tree.rm_callback(&msg);
                     }
                     state_guard.buttons.remove(&cmd);
+                    state_guard.config.buttons.remove(&cmd);
                 }
 
                 if ui.button("Save").clicked() {
                     let tx = state_guard.tx.clone().unwrap();
-                    let controller = bool_controller(cmd, state.make_behaviour(), tx);
-                    match &state_guard.status {
-                        None => {}
-                        Some(status) => match cmd.get_value(status) {
-                            None => {}
-                            Some(d) => controller.set(d),
-                        },
-                    }
-
-                    let controller = Arc::new(Mutex::new(controller));
+                    let behaviour = state.make_behaviour();
 
                     let msg = state_guard
                         .learn_msg
@@ -173,7 +166,21 @@ impl<'a> Widget for ButtonWidget<'a> {
                                 velocity: 0,
                             },
                         });
-                    println!("{:?}", msg);
+                    // println!("{:?}", msg);
+                    state_guard.config.buttons.insert(cmd, (behaviour , msg.to_midi()));
+
+                    let behaviour = Arc::new(Mutex::new(behaviour));
+
+                    let controller = bool_controller(cmd, behaviour, tx);
+                    match &state_guard.status {
+                        None => {}
+                        Some(status) => match cmd.get_value(status) {
+                            None => {}
+                            Some(d) => controller.set(d),
+                        },
+                    }
+
+                    let controller = Arc::new(Mutex::new(controller));
 
                     state_guard
                         .midi_tree
@@ -313,17 +320,7 @@ impl<'a> Widget for VolumeWidget<'a> {
 
                 if ui.button("Save").clicked() {
                     let tx = state_guard.tx.clone().unwrap();
-                    let controller = axis_controller(cmd, state.make_behaviour(), tx);
-                    match &state_guard.status {
-                        None => {}
-                        Some(status) => match cmd.get_value(status) {
-                            None => {}
-                            Some(d) => controller.set(d),
-                        },
-                    }
-
-                    // todo savestates are cmd + Behaviour + MidiMsg
-                    let controller = Arc::new(Mutex::new(controller));
+                    let behaviour = state.make_behaviour();
 
                     let msg = state_guard
                         .learn_msg
@@ -336,6 +333,21 @@ impl<'a> Widget for VolumeWidget<'a> {
                             },
                         });
                     println!("{:?}", msg);
+
+                    state_guard.config.axes.insert(cmd, (behaviour, msg.to_midi()));
+
+                    let behaviour = Arc::new(Mutex::new(behaviour));
+
+                    let controller = axis_controller(cmd, behaviour, tx);
+                    match &state_guard.status {
+                        None => {}
+                        Some(status) => match cmd.get_value(status) {
+                            None => {}
+                            Some(d) => controller.set(d),
+                        },
+                    }
+
+                    let controller = Arc::new(Mutex::new(controller));
 
                     state_guard
                         .midi_tree

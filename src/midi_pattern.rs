@@ -170,22 +170,7 @@ impl MidiMsgCallbackTree {
             )),
         }
     }
-
-    pub fn get_if_exists(&self, event: &MidiMsg) -> Option<Callback> {
-        match event {
-            ChannelVoice { channel, msg } => {
-                let hash_channel = HashChannel::from(channel);
-                let cvk = ChannelVoiceKind::from(msg);
-                let place = cvk.get_place(msg.clone()).unwrap();
-                match self.channels.get(&hash_channel) {
-                    Some(next) => next.get_if_exists(cvk, place),
-                    None => None,
-                }
-            }
-            _ => None,
-        }
-    }
-
+    
     pub fn rm_callback(&mut self, event: &MidiMsg) {
         match event {
             ChannelVoice { channel, msg } => {

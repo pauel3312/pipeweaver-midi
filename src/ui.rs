@@ -154,6 +154,7 @@ impl eframe::App for PwvMidiGUI {
                                     }
                                 });
                             let after_port = state.current_port.clone();
+                            state.config.midi_device = self.midi_dsc.port_name(&after_port).unwrap();
 
                             let mut current_learn_mode: bool = state.learn_mode;
                             ComboBox::from_label("MIDI event source")
@@ -376,6 +377,9 @@ impl eframe::App for PwvMidiGUI {
                 self.disconnect();
             } else if conn_ok && self.conn.is_none() {
                 self.connect().unwrap();
+            }
+            if ui.button("save").clicked() {
+                self.state.lock().unwrap().config.clone().save()
             }
         });
     }
