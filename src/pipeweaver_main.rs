@@ -11,6 +11,7 @@ use serde_with::serde_as;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::fs;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::signal;
@@ -29,9 +30,10 @@ pub struct ConfigState {
     pub midi_device: String,
 
     #[serde(skip)]
-    pub path: String,
+    pub path: PathBuf,
 }
 use crate::behaviours::{AxisBehaviour, BooleanBehaviour};
+use crate::default_config_path;
 
 impl ConfigState {
     pub fn new() -> Self {
@@ -39,7 +41,7 @@ impl ConfigState {
             axes: HashMap::new(),
             buttons: HashMap::new(),
             midi_device: "".to_string(),
-            path: "./test.cfg".to_string(),
+            path: default_config_path(),
         }
     }
 
@@ -48,7 +50,7 @@ impl ConfigState {
         fs::write(self.path, json_string).unwrap();
     }
 
-    pub fn load(path: String) -> Self {
+    pub fn load(path: PathBuf) -> Self {
         let mut config = match fs::read_to_string(path.clone()) {
             Ok(data) => {
                 serde_json::from_str::<ConfigState>(&data).unwrap_or_else(|_| ConfigState::new())
@@ -82,7 +84,7 @@ impl Debug for SharedState {
 }
 
 impl SharedState {
-    pub fn new(port: Option<MidiInputPort>, path: String) -> Self {
+    pub fn new(port: Option<MidiInputPort>, path: PathBuf) -> Self {
         let midi = MidiInput::new("temp").unwrap();
         Self {
             config: ConfigState::load(path),
@@ -220,12 +222,10 @@ pub async fn main(state: Arc<Mutex<SharedState>>) {
 }
 
 async fn learn_thread(state: Arc<Mutex<SharedState>>) -> JoinHandle<()> {
-    println!("starting learn thread");
     loop {
         if state.lock().unwrap().learning {
             state.lock().unwrap().learn_msg = Some(wait_on_midi_event_changed(state.clone()).await);
             state.lock().unwrap().learning = false;
-            // println!("{:?}", state.lock().unwrap().learn_msg);
         }
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
@@ -235,7 +235,6 @@ async fn wait_on_midi_event_changed(state: Arc<Mutex<SharedState>>) -> MidiMsg {
     let start_msg = state.lock().unwrap().last_midi_event.clone();
     loop {
         let event = state.lock().unwrap().last_midi_event.clone();
-        // println!("{:?}", event);
         if start_msg != event {
             break;
         }

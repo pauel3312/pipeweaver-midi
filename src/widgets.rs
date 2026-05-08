@@ -166,7 +166,6 @@ impl<'a> Widget for ButtonWidget<'a> {
                                 velocity: 0,
                             },
                         });
-                    // println!("{:?}", msg);
                     state_guard.config.buttons.insert(cmd, (behaviour , msg.to_midi()));
 
                     let behaviour = Arc::new(Mutex::new(behaviour));
@@ -332,7 +331,6 @@ impl<'a> Widget for VolumeWidget<'a> {
                                 velocity: 0,
                             },
                         });
-                    println!("{:?}", msg);
 
                     state_guard.config.axes.insert(cmd, (behaviour, msg.to_midi()));
 

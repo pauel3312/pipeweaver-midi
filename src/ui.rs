@@ -104,7 +104,6 @@ impl PwvMidiGUI {
             )
             .unwrap();
         self.conn = Some(conn);
-        println!("connected to {}", name);
         Ok(())
     }
 
