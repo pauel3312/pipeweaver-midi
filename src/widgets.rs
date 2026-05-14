@@ -149,7 +149,7 @@ impl<'a> Widget for ButtonWidget<'a> {
                         state_guard.midi_tree.rm_callback(&msg);
                     }
                     state_guard.buttons.remove(&cmd);
-                    state_guard.config.buttons.remove(&cmd);
+                    state_guard.config.rm_btn(cmd);
                 }
 
                 if ui.button("Save").clicked() {
@@ -166,7 +166,7 @@ impl<'a> Widget for ButtonWidget<'a> {
                                 velocity: 0,
                             },
                         });
-                    state_guard.config.buttons.insert(cmd, (behaviour , msg.to_midi()));
+                    state_guard.config.insert_btn(cmd, behaviour , msg.clone());
 
                     let behaviour = Arc::new(Mutex::new(behaviour));
 
@@ -315,6 +315,7 @@ impl<'a> Widget for VolumeWidget<'a> {
                         state_guard.midi_tree.rm_callback(&msg);
                     }
                     state_guard.axes.remove(&self.cmd);
+                    state_guard.config.rm_axis(self.cmd);
                 }
 
                 if ui.button("Save").clicked() {
@@ -332,7 +333,7 @@ impl<'a> Widget for VolumeWidget<'a> {
                             },
                         });
 
-                    state_guard.config.axes.insert(cmd, (behaviour, msg.to_midi()));
+                    state_guard.config.insert_axis(cmd, behaviour, msg.clone());
 
                     let behaviour = Arc::new(Mutex::new(behaviour));
 

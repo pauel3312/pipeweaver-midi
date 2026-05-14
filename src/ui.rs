@@ -1,4 +1,4 @@
-use crate::midi_pattern::is_event_valid;
+use crate::midi_callbacks::is_event_valid;
 use crate::pipeweaver_main::SharedState;
 use crate::pwv_controllers::{AxisCommand, BoolCommand};
 use crate::widgets::{
@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 use std::{io, os::fd::AsRawFd as _};
 use winit::event_loop::{ControlFlow, EventLoop};
 
-pub async fn run(state: Arc<Mutex<SharedState>>) -> io::Result<()> {
+pub(crate) async fn run(state: Arc<Mutex<SharedState>>) -> io::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default(),
         ..Default::default()
@@ -376,9 +376,6 @@ impl eframe::App for PwvMidiGUI {
                 self.disconnect();
             } else if conn_ok && self.conn.is_none() {
                 self.connect().unwrap();
-            }
-            if ui.button("save").clicked() {
-                self.state.lock().unwrap().config.clone().save()
             }
         });
     }

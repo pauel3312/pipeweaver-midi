@@ -1,16 +1,13 @@
-use crate::midi_pattern::MidiMsgCallbackTree;
+use crate::midi_callbacks::MidiMsgCallbackTree;
 use crate::pwv_controllers::{
     axis_controller, bool_controller, AxisCommand, AxisProvider, BoolCommand, BooleanProvider,
 };
 use midi_msg::MidiMsg;
-use midir::{MidiInput, MidiInputPort};
+use midir::{MidiInput, MidiInputConnection, MidiInputPort};
 use pipeweaver_ipc::commands::{DaemonRequest, DaemonStatus};
 use pipeweaver_websocket_client::{spawn_pipeweaver_handler, BroadcastMessage};
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -19,62 +16,21 @@ use tokio::sync::mpsc::Sender;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 
-#[serde_as]
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ConfigState {
-    // Vec<u8>'s are MIDI messages converted back to bytes, because MidiMsg isn't Serializable.
-    #[serde_as(as = "Vec<(_, _)>")]
-    pub axes: HashMap<AxisCommand, (AxisBehaviour, Vec<u8>)>,
-    #[serde_as(as = "Vec<(_, _)>")]
-    pub buttons: HashMap<BoolCommand, (BooleanBehaviour, Vec<u8>)>,
-    pub midi_device: String,
-
-    #[serde(skip)]
-    pub path: PathBuf,
-}
-use crate::behaviours::{AxisBehaviour, BooleanBehaviour};
-use crate::default_config_path;
-
-impl ConfigState {
-    pub fn new() -> Self {
-        Self {
-            axes: HashMap::new(),
-            buttons: HashMap::new(),
-            midi_device: "".to_string(),
-            path: default_config_path(),
-        }
-    }
-
-    pub fn save(self) {
-        let json_string = serde_json::to_string_pretty(&self).unwrap();
-        fs::write(self.path, json_string).unwrap();
-    }
-
-    pub fn load(path: PathBuf) -> Self {
-        let mut config = match fs::read_to_string(path.clone()) {
-            Ok(data) => {
-                serde_json::from_str::<ConfigState>(&data).unwrap_or_else(|_| ConfigState::new())
-            }
-            Err(_) => ConfigState::new(),
-        };
-        config.path = path;
-        config
-    }
-}
+use crate::config::ConfigState;
 
 #[derive(Clone)]
 pub struct SharedState {
-    pub config: ConfigState,
-    pub status: Option<DaemonStatus>,
-    pub tx: Option<Sender<DaemonRequest>>,
-    pub current_port: MidiInputPort,
-    pub last_midi_event: Option<MidiMsg>,
-    pub midi_tree: MidiMsgCallbackTree,
-    pub axes: HashMap<AxisCommand, Arc<Mutex<dyn AxisProvider + Send + Sync>>>,
-    pub buttons: HashMap<BoolCommand, Arc<Mutex<dyn BooleanProvider + Send + Sync>>>,
-    pub learn_msg: Option<MidiMsg>,
-    pub learn_mode: bool,
-    pub learning: bool,
+    pub(crate) config: ConfigState,
+    pub(crate) status: Option<DaemonStatus>,
+    pub(crate) tx: Option<Sender<DaemonRequest>>,
+    pub(crate) current_port: MidiInputPort,
+    pub(crate) last_midi_event: Option<MidiMsg>,
+    pub(crate) midi_tree: MidiMsgCallbackTree,
+    pub(crate) axes: HashMap<AxisCommand, Arc<Mutex<dyn AxisProvider + Send + Sync>>>,
+    pub(crate) buttons: HashMap<BoolCommand, Arc<Mutex<dyn BooleanProvider + Send + Sync>>>,
+    pub(crate) learn_msg: Option<MidiMsg>,
+    pub(crate) learn_mode: bool,
+    pub(crate) learning: bool,
 }
 
 impl Debug for SharedState {
