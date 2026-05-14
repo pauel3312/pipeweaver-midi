@@ -41,9 +41,9 @@ pub(crate) fn default_config_path() -> PathBuf {
 pub(crate) struct ConfigState {
     // Vec<u8>'s are MIDI messages converted back to bytes, because MidiMsg isn't Serializable.
     #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) axes: HashMap<AxisCommand, (AxisBehaviour, Vec<u8>)>,
+    pub(crate) axes: HashMap<AxisCommand, (AxisBehaviour, MidiMsg)>,
     #[serde_as(as = "Vec<(_, _)>")]
-    pub(crate) buttons: HashMap<BoolCommand, (BooleanBehaviour, Vec<u8>)>,
+    pub(crate) buttons: HashMap<BoolCommand, (BooleanBehaviour, MidiMsg)>,
     pub(crate) midi_device: String,
 
     #[serde(skip)]
@@ -62,7 +62,7 @@ impl ConfigState {
     }
 
     pub(crate) fn save(&self) {
-        let json_string = serde_json::to_string_pretty(self).unwrap();
+        let json_string = serde_json::to_string(self).unwrap();
         fs::write(self.path.clone(), json_string).unwrap();
     }
 
@@ -78,7 +78,7 @@ impl ConfigState {
     }
     
     pub(crate) fn insert_axis(&mut self, cmd: AxisCommand, behaviour: AxisBehaviour, msg: MidiMsg) {
-        self.axes.insert(cmd, (behaviour, msg.to_midi().into()));
+        self.axes.insert(cmd, (behaviour, msg));
         self.save()
     }
 
@@ -88,7 +88,7 @@ impl ConfigState {
     }
 
     pub(crate) fn insert_btn(&mut self, cmd: BoolCommand, behaviour: BooleanBehaviour, msg: MidiMsg) {
-        self.buttons.insert(cmd, (behaviour, msg.to_midi().into()));
+        self.buttons.insert(cmd, (behaviour, msg));
         self.save()
     }
 

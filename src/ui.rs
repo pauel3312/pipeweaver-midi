@@ -1,22 +1,21 @@
-use crate::midi_callbacks::is_event_valid;
+use crate::midi_mgr::MidiMgr;
 use crate::pipeweaver_main::SharedState;
 use crate::pwv_controllers::{AxisCommand, BoolCommand};
 use crate::widgets::{
-    AxisBehaviourState, BoolBehaviourState, RoutingTableWidget, SourceDeviceWidget,
-    TargetDeviceWidget,
+    AxisBehaviourState, BoolBehaviourState, RoutingTableWidget, SourceDeviceWidget, TargetDeviceWidget,
 };
 use eframe::epaint::{Color32, CornerRadius, Stroke};
 use eframe::{EframePumpStatus, UserEvent};
 use egui::{Button, CentralPanel, ComboBox, DragValue, Frame};
 use midi_msg::ControlChange::CC;
 use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
-use midir::{MidiInput, MidiInputConnection};
+use midir::MidiInput;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::{io, os::fd::AsRawFd as _};
 use winit::event_loop::{ControlFlow, EventLoop};
 
-pub(crate) async fn run(state: Arc<Mutex<SharedState>>) -> io::Result<()> {
+pub(crate) async fn run(state: Arc<Mutex<SharedState>>, midi_mgr: Arc<Mutex<MidiMgr>>) -> io::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default(),
         ..Default::default()
@@ -25,7 +24,7 @@ pub(crate) async fn run(state: Arc<Mutex<SharedState>>) -> io::Result<()> {
     let mut eventloop = EventLoop::<UserEvent>::with_user_event().build().unwrap();
     eventloop.set_control_flow(ControlFlow::Poll);
 
-    let app = PwvMidiGUI::new(state.clone());
+    let app = PwvMidiGUI::new(state.clone(), midi_mgr);
 
     let mut winit_app = eframe::create_native(
         "Pipeweaver-MIDI",
@@ -41,12 +40,10 @@ pub(crate) async fn run(state: Arc<Mutex<SharedState>>) -> io::Result<()> {
         let mut guard = match control_flow {
             ControlFlow::Poll => None,
             ControlFlow::Wait => Some(eventloop_fd.readable().await?),
-            ControlFlow::WaitUntil(deadline) => {
-                tokio::time::timeout_at(deadline.into(), eventloop_fd.readable())
-                    .await
-                    .ok()
-                    .transpose()?
-            }
+            ControlFlow::WaitUntil(deadline) => tokio::time::timeout_at(deadline.into(), eventloop_fd.readable())
+                .await
+                .ok()
+                .transpose()?,
         };
 
         match winit_app.pump_eframe_app(&mut eventloop, None) {
@@ -68,48 +65,19 @@ pub(crate) async fn run(state: Arc<Mutex<SharedState>>) -> io::Result<()> {
 pub(crate) struct PwvMidiGUI {
     state: Arc<Mutex<SharedState>>,
     midi_dsc: MidiInput,
-    conn: Option<MidiInputConnection<()>>,
+    midi_mgr: Arc<Mutex<MidiMgr>>,
     bool_states: HashMap<BoolCommand, BoolBehaviourState>,
     axis_states: HashMap<AxisCommand, AxisBehaviourState>,
 }
 
 impl PwvMidiGUI {
-    fn new(state: Arc<Mutex<SharedState>>) -> Self {
+    fn new(state: Arc<Mutex<SharedState>>, midi_mgr: Arc<Mutex<MidiMgr>>) -> Self {
         Self {
             state,
-            midi_dsc: MidiInput::new("midi-discover").unwrap(),
-            conn: None,
+            midi_dsc: MidiInput::new("pipeweaver-midi-discover").unwrap(),
+            midi_mgr,
             bool_states: HashMap::new(),
             axis_states: HashMap::new(),
-        }
-    }
-
-    fn connect(&mut self) -> io::Result<()> {
-        let midi = MidiInput::new("midi-main").unwrap();
-        let port = &self.state.lock().unwrap().current_port;
-        let state_handle = self.state.clone();
-        let name = self.midi_dsc.port_name(port).unwrap();
-        let conn = midi
-            .connect(
-                &port,
-                name.as_str(),
-                move |_tm, data, _t| {
-                    let msg = MidiMsg::from_midi(data).unwrap().0;
-                    if is_event_valid(msg.clone()) {
-                        state_handle.lock().unwrap().midi_tree.exec(&msg).unwrap();
-                        state_handle.lock().unwrap().last_midi_event = Some(msg);
-                    }
-                },
-                (),
-            )
-            .unwrap();
-        self.conn = Some(conn);
-        Ok(())
-    }
-
-    fn disconnect(&mut self) {
-        if let Some(conn) = self.conn.take() {
-            conn.close();
         }
     }
 }
@@ -164,30 +132,27 @@ impl eframe::App for PwvMidiGUI {
                                 });
                             state.learn_mode = current_learn_mode;
 
-                            let (mut sel_channel, mut is_cc, mut sel_value) =
-                                match state.clone().learn_msg {
-                                    None => (Channel::Ch1, true, 0u8),
-                                    Some(msg) => match msg {
-                                        MidiMsg::ChannelVoice { channel, msg } => {
-                                            let (is_cc, value) = match msg {
-                                                ChannelVoiceMsg::ControlChange { control } => {
-                                                    let value = match control {
-                                                        CC { control, value: _ } => control,
-                                                        _ => 0u8,
-                                                    };
-                                                    (true, value)
-                                                }
-                                                ChannelVoiceMsg::NoteOff { note, velocity: _ }
-                                                | ChannelVoiceMsg::NoteOn { note, velocity: _ } => {
-                                                    (false, note)
-                                                }
-                                                _ => (false, 0),
-                                            };
-                                            (channel, is_cc, value)
-                                        }
-                                        _ => (Channel::Ch1, true, 0u8),
-                                    },
-                                };
+                            let (mut sel_channel, mut is_cc, mut sel_value) = match state.clone().learn_msg {
+                                None => (Channel::Ch1, true, 0u8),
+                                Some(msg) => match msg {
+                                    MidiMsg::ChannelVoice { channel, msg } => {
+                                        let (is_cc, value) = match msg {
+                                            ChannelVoiceMsg::ControlChange { control } => {
+                                                let value = match control {
+                                                    CC { control, value: _ } => control,
+                                                    _ => 0u8,
+                                                };
+                                                (true, value)
+                                            }
+                                            ChannelVoiceMsg::NoteOff { note, velocity: _ }
+                                            | ChannelVoiceMsg::NoteOn { note, velocity: _ } => (false, note),
+                                            _ => (false, 0),
+                                        };
+                                        (channel, is_cc, value)
+                                    }
+                                    _ => (Channel::Ch1, true, 0u8),
+                                },
+                            };
 
                             if state.learn_mode {
                                 ui.label(format!("Channel: {}", sel_channel));
@@ -197,11 +162,7 @@ impl eframe::App for PwvMidiGUI {
                                     ui.label(format!("Note: {}", sel_value));
                                 }
                                 if ui
-                                    .add(Button::new(if state.learning {
-                                        "Learning..."
-                                    } else {
-                                        "Learn"
-                                    }))
+                                    .add(Button::new(if state.learning { "Learning..." } else { "Learn" }))
                                     .clicked()
                                 {
                                     state.learning = true;
@@ -219,36 +180,12 @@ impl eframe::App for PwvMidiGUI {
                                         ui.selectable_value(&mut sel_channel, Channel::Ch7, "Ch7");
                                         ui.selectable_value(&mut sel_channel, Channel::Ch8, "Ch8");
                                         ui.selectable_value(&mut sel_channel, Channel::Ch9, "Ch9");
-                                        ui.selectable_value(
-                                            &mut sel_channel,
-                                            Channel::Ch10,
-                                            "Ch10",
-                                        );
-                                        ui.selectable_value(
-                                            &mut sel_channel,
-                                            Channel::Ch11,
-                                            "Ch11",
-                                        );
-                                        ui.selectable_value(
-                                            &mut sel_channel,
-                                            Channel::Ch12,
-                                            "Ch12",
-                                        );
-                                        ui.selectable_value(
-                                            &mut sel_channel,
-                                            Channel::Ch13,
-                                            "Ch13",
-                                        );
-                                        ui.selectable_value(
-                                            &mut sel_channel,
-                                            Channel::Ch14,
-                                            "Ch14",
-                                        );
-                                        ui.selectable_value(
-                                            &mut sel_channel,
-                                            Channel::Ch15,
-                                            "Ch15",
-                                        );
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch10, "Ch10");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch11, "Ch11");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch12, "Ch12");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch13, "Ch13");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch14, "Ch14");
+                                        ui.selectable_value(&mut sel_channel, Channel::Ch15, "Ch15");
                                         ui.selectable_value(&mut sel_channel, Channel::Ch16, "Ch16")
                                     });
                                 ComboBox::from_label("Type")
@@ -369,13 +306,15 @@ impl eframe::App for PwvMidiGUI {
                 }
             }
 
+            let mut midi_mgr = self.midi_mgr.lock().unwrap();
+
             if before_port != after_port {
-                self.disconnect();
-                self.connect().unwrap();
+                midi_mgr.disconnect();
+                midi_mgr.connect(self.state.clone()).unwrap();
             } else if !conn_ok {
-                self.disconnect();
-            } else if conn_ok && self.conn.is_none() {
-                self.connect().unwrap();
+                midi_mgr.disconnect();
+            } else if conn_ok && midi_mgr.conn.is_none() {
+                midi_mgr.connect(self.state.clone()).unwrap();
             }
         });
     }

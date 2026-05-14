@@ -1,11 +1,11 @@
 use crate::midi_callbacks::MidiMsgCallbackTree;
 use crate::pwv_controllers::{
-    axis_controller, bool_controller, AxisCommand, AxisProvider, BoolCommand, BooleanProvider,
+    AxisCommand, AxisProvider, BoolCommand, BooleanProvider, axis_controller, bool_controller,
 };
 use midi_msg::MidiMsg;
-use midir::{MidiInput, MidiInputConnection, MidiInputPort};
+use midir::{MidiInput, MidiInputPort};
 use pipeweaver_ipc::commands::{DaemonRequest, DaemonStatus};
-use pipeweaver_websocket_client::{spawn_pipeweaver_handler, BroadcastMessage};
+use pipeweaver_websocket_client::{BroadcastMessage, spawn_pipeweaver_handler};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -17,6 +17,7 @@ use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
 
 use crate::config::ConfigState;
+use crate::midi_mgr::MidiMgr;
 
 #[derive(Clone)]
 pub struct SharedState {
@@ -73,7 +74,7 @@ impl SharedState {
                     }
                     let controller = Arc::new(Mutex::new(controller));
 
-                    let msg = MidiMsg::from_midi(&midi_data).unwrap().0;
+                    let msg = midi_data;
                     self.midi_tree
                         .insert_callback(&msg, controller.clone())
                         .unwrap();
@@ -91,7 +92,7 @@ impl SharedState {
                     }
                     let controller = Arc::new(Mutex::new(controller));
 
-                    let msg = MidiMsg::from_midi(&midi_data).unwrap().0;
+                    let msg = midi_data;
                     self.midi_tree
                         .insert_callback(&msg, controller.clone())
                         .unwrap();
@@ -104,12 +105,13 @@ impl SharedState {
         for port in midi.ports() {
             if midi.port_name(&port).unwrap() == self.config.midi_device {
                 self.current_port = port;
+                break;
             }
         }
     }
 }
 
-pub async fn main(state: Arc<Mutex<SharedState>>) {
+pub async fn main(state: Arc<Mutex<SharedState>>, midi_mgr: Arc<Mutex<MidiMgr>>) {
     // Create a channel for broadcasting changes
     let (broadcast, _) = broadcast::channel(10);
 
@@ -124,8 +126,13 @@ pub async fn main(state: Arc<Mutex<SharedState>>) {
 
     // let mut can_send: bool = false;
 
-    state.lock().unwrap().tx = Some(tx.clone());
-    state.lock().unwrap().initialize();
+    {
+        let mut state = state.lock().unwrap();
+        state.tx = Some(tx.clone());
+        state.initialize();
+    }
+
+    midi_mgr.lock().unwrap().connect(state.clone()).unwrap();
 
     tokio::spawn(learn_thread(state.clone()));
 

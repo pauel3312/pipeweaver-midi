@@ -36,7 +36,10 @@ impl<B: ?Sized> ControllerCore<B> {
     }
 
     pub fn send(&self, req: DaemonRequest) {
-        self.tx.try_send(req).unwrap();
+        match self.tx.try_send(req) {
+            Ok(_) => (),
+            Err(_) => {}
+        }
     }
 }
 

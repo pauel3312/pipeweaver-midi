@@ -9,7 +9,7 @@ pipeweaver-shared = { git = "https://github.com/pipeweaver/pipeweaver", commit =
 pipeweaver-websocket-client = { path = "../pipeweaver-websocket-client" }
 tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros", "signal"] }
 midir = "0.11.0"
-midi-msg = "0.8.2"
+midi-msg = { version = "0.9.0", features = ["serde"] }
 ulid = "1.2.1"
 egui = "0.34.2"
 eframe = "0.34.2"
