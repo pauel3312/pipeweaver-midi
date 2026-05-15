@@ -1,12 +1,13 @@
-use std::collections::HashMap;
-use std::fs;
-use std::path::PathBuf;
+use crate::behaviours::axis_behaviours::AxisBehaviour;
+use crate::behaviours::button_behaviours::BooleanBehaviour;
+use crate::pipeweaver_controllers::commands::{AxisCommand, BoolCommand};
 use clap::Parser;
 use midi_msg::MidiMsg;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
-use crate::behaviours::{AxisBehaviour, BooleanBehaviour};
-use crate::pwv_controllers::{AxisCommand, BoolCommand};
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -27,10 +28,7 @@ pub(crate) struct Args {
 pub(crate) fn default_config_path() -> PathBuf {
     let base = std::env::var_os("XDG_CONFIG_HOME")
         .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|home| PathBuf::from(home).join(".config"))
-        })
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))
         .unwrap_or_else(|| PathBuf::from("."));
 
     base.join("pipeweaver/pipeweaver-midi.json")
@@ -50,7 +48,6 @@ pub(crate) struct ConfigState {
     pub path: PathBuf,
 }
 
-
 impl ConfigState {
     pub(crate) fn new() -> Self {
         Self {
@@ -68,15 +65,13 @@ impl ConfigState {
 
     pub(crate) fn load(path: PathBuf) -> Self {
         let mut config = match fs::read_to_string(path.clone()) {
-            Ok(data) => {
-                serde_json::from_str::<ConfigState>(&data).unwrap_or_else(|_| ConfigState::new())
-            }
+            Ok(data) => serde_json::from_str::<ConfigState>(&data).unwrap_or_else(|_| ConfigState::new()),
             Err(_) => ConfigState::new(),
         };
         config.path = path;
         config
     }
-    
+
     pub(crate) fn insert_axis(&mut self, cmd: AxisCommand, behaviour: AxisBehaviour, msg: MidiMsg) {
         self.axes.insert(cmd, (behaviour, msg));
         self.save()
@@ -96,11 +91,9 @@ impl ConfigState {
         self.buttons.remove(&cmd);
         self.save()
     }
-    
+
     pub(crate) fn set_midi_device(&mut self, device: String) {
         self.midi_device = device;
         self.save()
     }
-    
 }
-

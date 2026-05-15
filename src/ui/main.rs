@@ -1,9 +1,8 @@
-use crate::midi_mgr::MidiMgr;
-use crate::pipeweaver_main::SharedState;
-use crate::pwv_controllers::{AxisCommand, BoolCommand};
-use crate::widgets::{
-    AxisBehaviourState, BoolBehaviourState, RoutingTableWidget, SourceDeviceWidget, TargetDeviceWidget,
-};
+use crate::common::SharedState;
+use crate::midi::manager::MidiMgr;
+use crate::pipeweaver_controllers::commands::{AxisCommand, BoolCommand};
+use crate::ui::behaviour_selectors::{AxisBehaviourState, BoolBehaviourState};
+use crate::ui::device_widgets::{RoutingTableWidget, SourceDeviceWidget, TargetDeviceWidget};
 use eframe::epaint::{Color32, CornerRadius, Stroke};
 use eframe::{EframePumpStatus, UserEvent};
 use egui::{Button, CentralPanel, ComboBox, DragValue, Frame};
@@ -226,8 +225,6 @@ impl eframe::App for PwvMidiGUI {
                     })
                     .inner
             };
-
-            // let tx = self.state.lock().unwrap().tx.clone();
 
             let status = self.state.lock().unwrap().status.clone();
             match status {

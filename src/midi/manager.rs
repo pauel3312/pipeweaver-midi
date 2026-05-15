@@ -1,5 +1,5 @@
-use crate::midi_callbacks::is_event_valid;
-use crate::pipeweaver_main::SharedState;
+use crate::common::SharedState;
+use crate::midi::callback_tree::is_event_valid;
 use midi_msg::MidiMsg;
 use midir::{MidiInput, MidiInputConnection};
 use std::io;
@@ -14,14 +14,14 @@ impl MidiMgr {
         Self { conn: None }
     }
 
-    pub(crate) fn connect(&mut self,state: Arc<Mutex<SharedState>>) -> io::Result<()> {
+    pub(crate) fn connect(&mut self, state: Arc<Mutex<SharedState>>) -> io::Result<()> {
         let midi = MidiInput::new("pipeweaver-midi").unwrap();
         let port = {
             let mut state = state.lock().unwrap();
             let port = state.current_port.clone();
             state.config.set_midi_device(midi.port_name(&port).unwrap());
             port
-        };        
+        };
         let name = midi.port_name(&port).unwrap();
         let state = state.clone();
         let conn = midi
