@@ -1,67 +1,60 @@
 use crate::common::SharedState;
 use crate::midi::manager::MidiMgr;
 use crate::pipeweaver_controllers::commands::{AxisCommand, BoolCommand};
+use crate::tray::TrayState;
 use crate::ui::behaviour_selectors::{AxisBehaviourState, BoolBehaviourState};
 use crate::ui::device_widgets::{RoutingTableWidget, SourceDeviceWidget, TargetDeviceWidget};
 use eframe::epaint::{Color32, CornerRadius, Stroke};
-use eframe::{EframePumpStatus, UserEvent};
-use egui::{Button, CentralPanel, ComboBox, DragValue, Frame};
+use egui::{Button, CentralPanel, ComboBox, DragValue, Frame, ViewportCommand};
 use midi_msg::ControlChange::CC;
 use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
 use midir::MidiInput;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::{io, os::fd::AsRawFd as _};
-use winit::event_loop::{ControlFlow, EventLoop};
+use tokio::time::sleep;
 
-pub(crate) async fn run(state: Arc<Mutex<SharedState>>, midi_mgr: Arc<Mutex<MidiMgr>>) -> io::Result<()> {
+pub(crate) async fn run(
+    state: Arc<Mutex<SharedState>>,
+    midi_mgr: Arc<Mutex<MidiMgr>>,
+    stop: Arc<AtomicBool>,
+    tray: Arc<Mutex<TrayState>>
+) -> anyhow::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default(),
         ..Default::default()
     };
 
-    let mut eventloop = EventLoop::<UserEvent>::with_user_event().build().unwrap();
-    eventloop.set_control_flow(ControlFlow::Poll);
-
-    let app = PwvMidiGUI::new(state.clone(), midi_mgr);
-
-    let mut winit_app = eframe::create_native(
-        "Pipeweaver-MIDI",
-        options,
-        Box::new(|_| Ok(Box::<PwvMidiGUI>::new(app))),
-        &eventloop,
-    );
-
-    let eventloop_fd = tokio::io::unix::AsyncFd::new(eventloop.as_raw_fd())?;
-    let mut control_flow = ControlFlow::Poll;
-
     loop {
-        let mut guard = match control_flow {
-            ControlFlow::Poll => None,
-            ControlFlow::Wait => Some(eventloop_fd.readable().await?),
-            ControlFlow::WaitUntil(deadline) => tokio::time::timeout_at(deadline.into(), eventloop_fd.readable())
-                .await
-                .ok()
-                .transpose()?,
-        };
-
-        match winit_app.pump_eframe_app(&mut eventloop, None) {
-            EframePumpStatus::Continue(next) => control_flow = next,
-            EframePumpStatus::Exit(code) => {
-                log::info!("exit code: {code}");
-                break;
-            }
+        if stop.load(Ordering::Relaxed) {
+            break;
         }
+        let ui_on = tray.lock().unwrap().ui_on.clone();
 
-        if let Some(mut guard) = guard.take() {
-            guard.clear_ready();
+        if ui_on.load(Ordering::Relaxed) {
+            let state = state.clone();
+            let midi_mgr = midi_mgr.clone();
+            let stop = stop.clone();
+            let ui_on = ui_on.clone();
+            let tray = tray.clone();
+            eframe::run_native(
+                "Pipeweaver-MIDI",
+                options.clone(),
+                Box::new(move |cc| {
+                     tray.lock().unwrap().ctx = Some(cc.egui_ctx.clone());
+                    Ok(Box::new(PwvMidiGUI::new(state, midi_mgr, stop, ui_on)))
+                }),
+            )?;
+        } else {
+            sleep(std::time::Duration::from_millis(100)).await;
         }
     }
-
-    Ok::<_, io::Error>(())
+    Ok(())
 }
 
 pub(crate) struct PwvMidiGUI {
+    stop: Arc<AtomicBool>,
+    ui_on: Arc<AtomicBool>,
     state: Arc<Mutex<SharedState>>,
     midi_dsc: MidiInput,
     midi_mgr: Arc<Mutex<MidiMgr>>,
@@ -70,8 +63,15 @@ pub(crate) struct PwvMidiGUI {
 }
 
 impl PwvMidiGUI {
-    fn new(state: Arc<Mutex<SharedState>>, midi_mgr: Arc<Mutex<MidiMgr>>) -> Self {
+    fn new(
+        state: Arc<Mutex<SharedState>>,
+        midi_mgr: Arc<Mutex<MidiMgr>>,
+        stop: Arc<AtomicBool>,
+        ui_on: Arc<AtomicBool>,
+    ) -> Self {
         Self {
+            stop,
+            ui_on,
             state,
             midi_dsc: MidiInput::new("pipeweaver-midi-discover").unwrap(),
             midi_mgr,
@@ -83,6 +83,17 @@ impl PwvMidiGUI {
 
 impl eframe::App for PwvMidiGUI {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx();
+        {
+            if self.stop.load(Ordering::Relaxed) || (!self.ui_on.load(Ordering::Relaxed)) {
+                ctx.send_viewport_cmd(ViewportCommand::Close)
+            }
+        }
+
+        if ctx.input(|i| i.viewport().close_requested()) {
+            self.ui_on.store(false, Ordering::Relaxed);
+        }
+
         CentralPanel::default().show_inside(ui, |ui| {
             let mut conn_ok = true;
             let (before_port, after_port) = {
