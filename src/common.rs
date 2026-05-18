@@ -38,7 +38,7 @@ impl SharedState {
     pub fn new(port: Option<MidiInputPort>, path: PathBuf) -> Self {
         let midi = MidiInput::new("temp").unwrap();
         Self {
-            config: ConfigState::load(path),
+            config: ConfigState::from(path),
             status: None,
             tx: None,
             current_port: port.unwrap_or(midi.ports()[0].clone()),

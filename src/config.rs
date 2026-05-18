@@ -37,15 +37,26 @@ pub(crate) fn default_config_path() -> PathBuf {
 #[serde_as]
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct ConfigState {
-    // Vec<u8>'s are MIDI messages converted back to bytes, because MidiMsg isn't Serializable.
     #[serde_as(as = "Vec<(_, _)>")]
     pub(crate) axes: HashMap<AxisCommand, (AxisBehaviour, MidiMsg)>,
     #[serde_as(as = "Vec<(_, _)>")]
     pub(crate) buttons: HashMap<BoolCommand, (BooleanBehaviour, MidiMsg)>,
     pub(crate) midi_device: String,
 
+    pub(crate) auto_save: bool,
+
     #[serde(skip)]
     pub path: PathBuf,
+}
+impl From<PathBuf> for ConfigState {
+    fn from(path: PathBuf) -> Self {
+        let mut config = match fs::read_to_string(path.clone()) {
+            Ok(data) => serde_json::from_str::<ConfigState>(&data).unwrap_or_else(|_| ConfigState::new()),
+            Err(_) => ConfigState::new(),
+        };
+        config.path = path;
+        config
+    }
 }
 
 impl ConfigState {
@@ -63,8 +74,8 @@ impl ConfigState {
         fs::write(self.path.clone(), json_string).unwrap();
     }
 
-    pub(crate) fn load(path: PathBuf) -> Self {
-        let mut config = match fs::read_to_string(path.clone()) {
+    pub(crate) fn load(&mut self) {
+        let loaded = match fs::read_to_string(self.path.clone()) {
             Ok(data) => serde_json::from_str::<ConfigState>(&data).unwrap_or_else(|_| ConfigState::new()),
             Err(_) => ConfigState::new(),
         };
@@ -74,26 +85,33 @@ impl ConfigState {
 
     pub(crate) fn insert_axis(&mut self, cmd: AxisCommand, behaviour: AxisBehaviour, msg: MidiMsg) {
         self.axes.insert(cmd, (behaviour, msg));
-        self.save()
+        self.autosave()
     }
 
     pub(crate) fn rm_axis(&mut self, cmd: AxisCommand) {
         self.axes.remove(&cmd);
-        self.save()
+        self.autosave()
     }
 
     pub(crate) fn insert_btn(&mut self, cmd: BoolCommand, behaviour: BooleanBehaviour, msg: MidiMsg) {
         self.buttons.insert(cmd, (behaviour, msg));
-        self.save()
+        self.autosave()
     }
 
     pub(crate) fn rm_btn(&mut self, cmd: BoolCommand) {
         self.buttons.remove(&cmd);
-        self.save()
+        self.autosave()
     }
 
     pub(crate) fn set_midi_device(&mut self, device: String) {
         self.midi_device = device;
-        self.save()
+        self.autosave()
     }
+
+    fn autosave(&self) {
+        if self.auto_save {
+            self.save()
+        }
+    }
+
 }
