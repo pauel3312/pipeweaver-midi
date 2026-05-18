@@ -10,7 +10,7 @@ mod ui;
 
 use crate::common::SharedState;
 use crate::config::Args;
-use crate::tray::{spawn_tray, TrayState};
+use crate::tray::{TrayState, spawn_tray};
 use anyhow::Result;
 use clap::Parser;
 use midi::manager::MidiMgr;
@@ -20,8 +20,6 @@ use std::sync::{Arc, Mutex};
 const APP_NAME: &str = "Pipeweaver-MIDI";
 
 const ICON: &[u8] = include_bytes!("../../pipeweaver/daemon/resources/icons/pipeweaver-large.png");
-
-
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -41,7 +39,6 @@ async fn main() -> Result<()> {
     let pwv_join_handle = tokio::spawn(pipeweaver_main::main(state.clone(), midi_mgr.clone(), stopped.clone()));
 
     let tray_join_handle = tokio::spawn(spawn_tray(stopped.clone(), tray_state.clone()));
-
 
     ui::main::run(state.clone(), midi_mgr.clone(), stopped, tray_state).await?; // NEEDS TO RUN ON MAIN THREAD (bc egui ig)
 

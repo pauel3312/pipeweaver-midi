@@ -18,7 +18,6 @@ impl<'a> Widget for MidiDeviceWidget<'a> {
     fn ui(self, ui: &mut Ui) -> Response {
         let mut conn_ok = true;
 
-
         let inner_response = Frame::default()
             .inner_margin(4)
             .outer_margin(5)
@@ -201,11 +200,12 @@ impl<'a> Widget for ConfigWidget<'a> {
                     let tx = self.state.file_dialog_tx.clone();
                     let current_dir = self
                         .state
-                        .path.lock().unwrap()
+                        .path
+                        .lock()
+                        .unwrap()
                         .parent()
                         .unwrap_or_else(|| std::path::Path::new("/"))
                         .to_path_buf();
-
 
                     if ui.button("Pick File").clicked() {
                         std::thread::spawn(move || {

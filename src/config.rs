@@ -6,10 +6,10 @@ use midi_msg::MidiMsg;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::HashMap;
-use std::{fs, thread};
 use std::path::PathBuf;
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
-use std::sync::mpsc::{Sender, Receiver, channel};
+use std::{fs, thread};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -84,10 +84,7 @@ impl ConfigState {
             path,
             file_dialog_tx: Some(file_dialog_tx),
         };
-
         conf.launch_rx_thread(file_dialog_rx);
-
-
         conf
     }
 
@@ -147,5 +144,4 @@ impl ConfigState {
             self.save()
         }
     }
-
 }

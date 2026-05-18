@@ -3,20 +3,19 @@ use anyhow::Result;
 
 use image::GenericImageView;
 
+use egui::{Context, ViewportCommand};
 use ksni::menu::StandardItem;
 use ksni::{Category, Icon, MenuItem, Status, ToolTip, Tray, TrayMethods};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
-use egui::{Context, ViewportCommand};
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Sender;
 
 pub(super) struct TrayState {
     pub(super) ui_on: Arc<AtomicBool>,
-    pub(super) ctx: Option<Context>
+    pub(super) ctx: Option<Context>,
 }
-
 
 enum TrayMessages {
     Toggle,
