@@ -6,8 +6,10 @@ use midi_msg::MidiMsg;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::collections::HashMap;
-use std::fs;
+use std::{fs, thread};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::sync::mpsc::{Sender, Receiver, channel};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
@@ -46,41 +48,73 @@ pub(crate) struct ConfigState {
     pub(crate) auto_save: bool,
 
     #[serde(skip)]
-    pub path: PathBuf,
+    pub(crate) path: Arc<Mutex<PathBuf>>,
+
+    #[serde(skip)]
+    pub(super) file_dialog_tx: Option<Sender<Option<PathBuf>>>,
 }
+
 impl From<PathBuf> for ConfigState {
     fn from(path: PathBuf) -> Self {
+        let (file_dialog_tx, file_dialog_rx) = channel::<Option<PathBuf>>();
+
         let mut config = match fs::read_to_string(path.clone()) {
             Ok(data) => serde_json::from_str::<ConfigState>(&data).unwrap_or_else(|_| ConfigState::new()),
             Err(_) => ConfigState::new(),
         };
+        let path = Arc::new(Mutex::new(path));
         config.path = path;
+        config.launch_rx_thread(file_dialog_rx);
+        config.file_dialog_tx = Some(file_dialog_tx);
         config
     }
 }
 
 impl ConfigState {
     pub(crate) fn new() -> Self {
-        Self {
+        let path = Arc::new(Mutex::new(default_config_path()));
+
+        let (file_dialog_tx, file_dialog_rx) = channel::<Option<PathBuf>>();
+
+        let conf = Self {
             axes: HashMap::new(),
             buttons: HashMap::new(),
             midi_device: "".to_string(),
-            path: default_config_path(),
-        }
+            auto_save: false,
+            path,
+            file_dialog_tx: Some(file_dialog_tx),
+        };
+
+        conf.launch_rx_thread(file_dialog_rx);
+
+
+        conf
+    }
+
+    fn launch_rx_thread(&self, file_dialog_rx: Receiver<Option<PathBuf>>) {
+        let path = self.path.clone();
+        thread::spawn(move || {
+            while let Ok(Some(new_path)) = file_dialog_rx.recv() {
+                let mut p = path.lock().unwrap();
+                *p = new_path;
+            }
+        });
     }
 
     pub(crate) fn save(&self) {
         let json_string = serde_json::to_string(self).unwrap();
-        fs::write(self.path.clone(), json_string).unwrap();
+        fs::write(self.path.lock().unwrap().clone(), json_string).unwrap();
     }
 
     pub(crate) fn load(&mut self) {
-        let loaded = match fs::read_to_string(self.path.clone()) {
+        let loaded = match fs::read_to_string(self.path.lock().unwrap().clone()) {
             Ok(data) => serde_json::from_str::<ConfigState>(&data).unwrap_or_else(|_| ConfigState::new()),
             Err(_) => ConfigState::new(),
         };
-        config.path = path;
-        config
+        self.axes = loaded.axes;
+        self.buttons = loaded.buttons;
+        self.midi_device = loaded.midi_device;
+        self.auto_save = loaded.auto_save;
     }
 
     pub(crate) fn insert_axis(&mut self, cmd: AxisCommand, behaviour: AxisBehaviour, msg: MidiMsg) {

@@ -4,10 +4,8 @@ use crate::pipeweaver_controllers::commands::{AxisCommand, BoolCommand};
 use crate::tray::TrayState;
 use crate::ui::behaviour_selectors::{AxisBehaviourState, BoolBehaviourState};
 use crate::ui::device_widgets::{RoutingTableWidget, SourceDeviceWidget, TargetDeviceWidget};
-use eframe::epaint::{Color32, CornerRadius, Stroke};
-use egui::{Button, CentralPanel, ComboBox, DragValue, Frame, ViewportCommand};
-use midi_msg::ControlChange::CC;
-use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
+use crate::ui::util_widgets::{ConfigWidget, MidiDeviceWidget};
+use egui::{CentralPanel, ScrollArea, ViewportCommand};
 use midir::MidiInput;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,7 +16,7 @@ pub(crate) async fn run(
     state: Arc<Mutex<SharedState>>,
     midi_mgr: Arc<Mutex<MidiMgr>>,
     stop: Arc<AtomicBool>,
-    tray: Arc<Mutex<TrayState>>
+    tray: Arc<Mutex<TrayState>>,
 ) -> anyhow::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default(),
@@ -41,7 +39,7 @@ pub(crate) async fn run(
                 "Pipeweaver-MIDI",
                 options.clone(),
                 Box::new(move |cc| {
-                     tray.lock().unwrap().ctx = Some(cc.egui_ctx.clone());
+                    tray.lock().unwrap().ctx = Some(cc.egui_ctx.clone());
                     Ok(Box::new(PwvMidiGUI::new(state, midi_mgr, stop, ui_on)))
                 }),
             )?;
@@ -95,156 +93,20 @@ impl eframe::App for PwvMidiGUI {
         }
 
         CentralPanel::default().show_inside(ui, |ui| {
-            let mut conn_ok = true;
-            let (before_port, after_port) = {
-                let mut state = self.state.lock().unwrap();
-                let before_port = state.current_port.clone();
-                let mut text = String::from("Port no longer valid!");
-                match self.midi_dsc.port_name(&state.current_port) {
-                    Ok(txt) => {
-                        text = txt;
+            ScrollArea::both().show(ui, |ui| {
+                ui.add(MidiDeviceWidget {
+                    state: self.state.clone(),
+                    midi_dsc: &self.midi_dsc,
+                    midi_mgr: self.midi_mgr.clone(),
+                });
+
+                let status = self.state.lock().unwrap().status.clone();
+                match status {
+                    None => {
+                        ui.label("Pipeweaver not connected!");
                     }
-                    Err(_) => {
-                        conn_ok = false;
-                    }
-                }
-
-                Frame::default()
-                    .inner_margin(4)
-                    .outer_margin(5)
-                    .stroke(Stroke::new(3.0, Color32::DARK_GRAY))
-                    .corner_radius(CornerRadius::same(10))
-                    .show(ui, |ui| {
-                        ui.vertical(|ui| {
-                            ComboBox::from_label("MIDI Device")
-                                .selected_text(text)
-                                .show_ui(ui, |ui| {
-                                    let ports = self.midi_dsc.ports();
-                                    let current_port = &mut state.current_port;
-
-                                    for port in ports {
-                                        ui.selectable_value(
-                                            current_port,
-                                            port.clone(),
-                                            self.midi_dsc.port_name(&port).unwrap(),
-                                        );
-                                    }
-                                });
-                            let after_port = state.current_port.clone();
-                            state.config.midi_device = self.midi_dsc.port_name(&after_port).unwrap();
-
-                            let mut current_learn_mode: bool = state.learn_mode;
-                            ComboBox::from_label("MIDI event source")
-                                .selected_text(if state.learn_mode { "Learn" } else { "Custom" })
-                                .show_ui(ui, |ui| {
-                                    ui.selectable_value(&mut current_learn_mode, true, "Learn");
-                                    ui.selectable_value(&mut current_learn_mode, false, "Custom")
-                                });
-                            state.learn_mode = current_learn_mode;
-
-                            let (mut sel_channel, mut is_cc, mut sel_value) = match state.clone().learn_msg {
-                                None => (Channel::Ch1, true, 0u8),
-                                Some(msg) => match msg {
-                                    MidiMsg::ChannelVoice { channel, msg } => {
-                                        let (is_cc, value) = match msg {
-                                            ChannelVoiceMsg::ControlChange { control } => {
-                                                let value = match control {
-                                                    CC { control, value: _ } => control,
-                                                    _ => 0u8,
-                                                };
-                                                (true, value)
-                                            }
-                                            ChannelVoiceMsg::NoteOff { note, velocity: _ }
-                                            | ChannelVoiceMsg::NoteOn { note, velocity: _ } => (false, note),
-                                            _ => (false, 0),
-                                        };
-                                        (channel, is_cc, value)
-                                    }
-                                    _ => (Channel::Ch1, true, 0u8),
-                                },
-                            };
-
-                            if state.learn_mode {
-                                ui.label(format!("Channel: {}", sel_channel));
-                                if is_cc {
-                                    ui.label(format!("CC: {}", sel_value));
-                                } else {
-                                    ui.label(format!("Note: {}", sel_value));
-                                }
-                                if ui
-                                    .add(Button::new(if state.learning { "Learning..." } else { "Learn" }))
-                                    .clicked()
-                                {
-                                    state.learning = true;
-                                }
-                            } else {
-                                ComboBox::from_label("Channel")
-                                    .selected_text(sel_channel.to_string())
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch1, "Ch1");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch2, "Ch2");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch3, "Ch3");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch4, "Ch4");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch5, "Ch5");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch6, "Ch6");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch7, "Ch7");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch8, "Ch8");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch9, "Ch9");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch10, "Ch10");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch11, "Ch11");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch12, "Ch12");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch13, "Ch13");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch14, "Ch14");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch15, "Ch15");
-                                        ui.selectable_value(&mut sel_channel, Channel::Ch16, "Ch16")
-                                    });
-                                ComboBox::from_label("Type")
-                                    .selected_text(if is_cc { "CC" } else { "Note" })
-                                    .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut is_cc, true, "CC");
-                                        ui.selectable_value(&mut is_cc, false, "Note");
-                                    });
-
-                                ui.horizontal(|ui| {
-                                    ui.add(DragValue::new(&mut sel_value));
-                                    if is_cc {
-                                        ui.label("CC number");
-                                    } else {
-                                        ui.label("Note number");
-                                    }
-                                });
-                                state.learn_msg = Some(MidiMsg::ChannelVoice {
-                                    channel: sel_channel,
-                                    msg: if is_cc {
-                                        ChannelVoiceMsg::ControlChange {
-                                            control: CC {
-                                                control: sel_value,
-                                                value: 0,
-                                            },
-                                        }
-                                    } else {
-                                        ChannelVoiceMsg::NoteOn {
-                                            note: sel_value,
-                                            velocity: 0,
-                                        }
-                                    },
-                                });
-                            }
-                            (before_port, after_port)
-                        })
-                        .inner
-                    })
-                    .inner
-            };
-
-            let status = self.state.lock().unwrap().status.clone();
-            match status {
-                None => {
-                    ui.label("Pipeweaver not connected!");
-                }
-                Some(status) => {
-                    let profile = &status.audio.profile;
-                    egui::scroll_area::ScrollArea::horizontal().show(ui, |ui| {
+                    Some(status) => {
+                        let profile = &status.audio.profile;
                         ui.horizontal(|ui| {
                             ui.spacing();
                             for psd in &profile.devices.sources.physical_devices {
@@ -310,20 +172,10 @@ impl eframe::App for PwvMidiGUI {
 
                         ui.end_row();
                         ui.spacing();
-                    });
+                    }
                 }
-            }
-
-            let mut midi_mgr = self.midi_mgr.lock().unwrap();
-
-            if before_port != after_port {
-                midi_mgr.disconnect();
-                midi_mgr.connect(self.state.clone()).unwrap();
-            } else if !conn_ok {
-                midi_mgr.disconnect();
-            } else if conn_ok && midi_mgr.conn.is_none() {
-                midi_mgr.connect(self.state.clone()).unwrap();
-            }
+                ui.add(ConfigWidget::new(&mut self.state.lock().unwrap().config))
+            });
         });
     }
 }
