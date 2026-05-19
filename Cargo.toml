@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 pipeweaver-ipc = { git = "https://github.com/pipeweaver/pipeweaver", commit = "228bf6b" }
 pipeweaver-shared = { git = "https://github.com/pipeweaver/pipeweaver", commit = "228bf6b" }
-pipeweaver-websocket-client = { path = "../pipeweaver-websocket-client" }
+pipeweaver-websocket-client = { git = "https://github.com/pauel3312/pwv-wsc-as-dep-for-pwv-midi.git", branch = "main" }
 tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros", "signal"] }
 midir = "0.11.0"
 midi-msg = { version = "0.9.0", features = ["serde"] }
