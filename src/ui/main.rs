@@ -92,7 +92,7 @@ impl eframe::App for PwvMidiGUI {
             self.ui_on.store(false, Ordering::Relaxed);
         }
 
-        CentralPanel::default().show_inside(ui, |ui| {
+        CentralPanel::default().show(ui, |ui| {
             ScrollArea::both().show(ui, |ui| {
                 ui.add(MidiDeviceWidget {
                     state: self.state.clone(),

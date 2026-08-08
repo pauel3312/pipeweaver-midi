@@ -4,21 +4,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-pipeweaver-ipc = { git = "https://github.com/pipeweaver/pipeweaver", commit = "228bf6b" }
-pipeweaver-shared = { git = "https://github.com/pipeweaver/pipeweaver", commit = "228bf6b" }
+pipeweaver-ipc = { git = "https://github.com/pipeweaver/pipeweaver", tag = "v0.1.9" }
+pipeweaver-shared = { git = "https://github.com/pipeweaver/pipeweaver", tag = "v0.1.9" }
 pipeweaver-websocket-client = { git = "https://github.com/pauel3312/pwv-wsc-as-dep-for-pwv-midi.git", branch = "main" }
 tokio = { version = "1.52.1", features = ["rt", "rt-multi-thread", "macros", "signal"] }
 midir = "0.11.0"
 midi-msg = { version = "0.9.0", features = ["serde"] }
 ulid = "1.2.1"
-egui = "0.34.2"
+egui = "0.36.1"
 rfd = "0.17.2"
-eframe = "0.34.2"
+eframe = "0.36.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 serde_with = "3.19.0"
 clap = { version = "4.6.1", features = ["derive"] }
-anyhow = "1.0.102"
+anyhow = "^1.0"
 image = "0.25.10"
 ksni = { version = "0.3.4", features = ["async-io"], default-features = false }
 futures = "0.3.32"
