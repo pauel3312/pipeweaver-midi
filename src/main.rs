@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 
 const APP_NAME: &str = "Pipeweaver-MIDI";
 
-const ICON: &[u8] = include_bytes!("../../pipeweaver/daemon/resources/icons/pipeweaver-large.png");
+const ICON: &[u8] = include_bytes!("../res/icons/pipeweaver-midi-large.png");
 
 #[tokio::main]
 async fn main() -> Result<()> {
