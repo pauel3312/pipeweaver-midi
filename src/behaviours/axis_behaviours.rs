@@ -129,9 +129,7 @@ impl AxisBehaviourTrait for TwosComplimentRelativeAxis {
             offset = -offset;
         }
         self.curr_val = self.curr_val.saturating_add_signed(offset);
-        if self.curr_val > 100 {
-            self.curr_val = 100;
-        }
+        self.curr_val = self.curr_val.min(100);
         self.curr_val
     }
 
@@ -154,14 +152,15 @@ impl AxisBehaviourTrait for SignMagnitudeRelativeAxis {
         let magnitude = data & 0b0011_1111;
         let mut offset = if data & 0b0100_0000 != 0{
             -(magnitude as i8)
-        } else { 
+        } else {
             magnitude as i8
         };
         if self.invert {
             offset = -offset;
         }
         self.curr_val = self.curr_val.saturating_add_signed(offset);
-        self.curr_val.min(100)
+        self.curr_val = self.curr_val.min(100);
+        self.curr_val
     }
 
     fn set(&mut self, data: u8) {
@@ -185,9 +184,7 @@ impl AxisBehaviourTrait for BinaryOffsetRelativeAxis {
             offset = -offset;
         }
         self.curr_val = self.curr_val.saturating_add_signed(offset);
-        if self.curr_val > 100 {
-            self.curr_val = 100;
-        }
+        self.curr_val = self.curr_val.min(100);
         self.curr_val
     }
 
