@@ -3,6 +3,11 @@ name = "pipeweaver-midi"
 version = "0.1.1"
 edition = "2024"
 
+[build-dependencies]
+resvg = "0.49.0"
+usvg = "0.49.0"
+tiny-skia = "0.12"
+
 [dependencies]
 pipeweaver-ipc = { git = "https://github.com/pipeweaver/pipeweaver", tag = "v0.1.9" }
 pipeweaver-shared = { git = "https://github.com/pipeweaver/pipeweaver", tag = "v0.1.9" }
